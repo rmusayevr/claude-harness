@@ -3,8 +3,10 @@
   "description": "Portable agent harness: on-demand workflow skills, mechanical enforcement hooks, and a lesson vault that survives between projects.",
   "version": "0.1.0",
   "author": {
-    "name": "rashadmusayev19",
+    "name": "rmusayevr",
     "email": "rashadmusayev19@gmail.com"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "homepage": "https://github.com/rmusayevr/claude-harness",
+  "repository": "https://github.com/rmusayevr/claude-harness"
 }

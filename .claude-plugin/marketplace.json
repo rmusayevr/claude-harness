@@ -2,7 +2,7 @@
   "name": "harness",
   "description": "A single portable agent harness: on-demand workflow skills, mechanical enforcement hooks, and a lesson vault that survives between projects.",
   "owner": {
-    "name": "rashadmusayev19",
+    "name": "rmusayevr",
     "email": "rashadmusayev19@gmail.com"
   },
   "plugins": [

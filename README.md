@@ -12,7 +12,7 @@ does.
 From a git remote:
 
 ```
-/plugin marketplace add <owner>/<repo>
+/plugin marketplace add rmusayevr/claude-harness
 /plugin install harness@harness
 ```
 
