@@ -3,7 +3,9 @@
 A portable Claude Code plugin: on-demand workflow skills, mechanical enforcement
 hooks, and a lesson vault that survives between projects.
 
-Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) first. It is the routing rule every
+Start with [`GUIDE.md`](./GUIDE.md) — how to use it, when not to, and what it covers from first commit to production.
+
+Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) before extending it. It is the routing rule every
 addition gets checked against, and it explains why the volume lives where it
 does.
 

@@ -79,8 +79,10 @@ for (const [dir, group] of [['skills', 'core'], ['rules', 'pack']]) {
       description: fm.description ?? '',
       userOnly: /^(true|yes|on|1)$/i.test(fm['disable-model-invocation'] ?? ''),
       lines: text.split(/\r?\n/).length,
-      hasIncidents: /## Incidents/.test(text),
-      incidentRecorded: /## Incidents/.test(text) && !PLACEHOLDER.test(text),
+      // Anchored to line start: promote-lesson MENTIONS '## Incidents' mid-sentence
+      // while routing a lesson, and an unanchored match counted that as provenance.
+      hasIncidents: /^## Incidents/m.test(text),
+      incidentRecorded: /^## Incidents/m.test(text) && !PLACEHOLDER.test(text),
       group,
       file: path.relative(ROOT, f).replace(/\\/g, '/'),
     });
