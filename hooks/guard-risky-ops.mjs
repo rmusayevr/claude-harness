@@ -16,6 +16,7 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { existsSync } from 'node:fs';
 
 // ---------------------------------------------------------------- helpers
 
@@ -215,7 +216,7 @@ function checkBash(command) {
 
 // ---------------------------------------------------------------- write rules
 
-function checkWrite(filePath) {
+function checkWrite(filePath, alreadyExists) {
   const p = norm(filePath);
   const b = base(p);
   if (!b) return null;
@@ -235,11 +236,23 @@ function checkWrite(filePath) {
   if (SENSITIVE_EXT.test(b) || SENSITIVE_NAME.test(b)) {
     return { decision: 'ask', rule: 'write-credential-file', reason: `\`${b}\` is a credential or certificate file.` };
   }
-  if (MIGRATION_DIR.test(p)) {
+  // Creating a NEW migration file is not a destructive act — it is a file, and
+  // `git rm` undoes it. What is destructive is *running* it, which is
+  // guard-prod-ddl's job. Asking here guarded the wrong moment, and because
+  // `ask` is a hard block with no operator present, it made every
+  // non-interactive run build around a migration it could not create.
+  //
+  // CHANGING an already-written migration is different: it may already have
+  // been applied somewhere, so editing it silently diverges environments.
+  // That is the case worth a prompt.
+  if (MIGRATION_DIR.test(p) && alreadyExists) {
     return {
       decision: 'ask',
-      rule: 'write-migration',
-      reason: `\`${p}\` is a migration. Migrations run once and are awkward to reverse — confirm the up *and* down path.`,
+      rule: 'edit-applied-migration',
+      reason:
+        `\`${p}\` already exists. If it has been applied anywhere, editing it makes environments ` +
+        `diverge silently — the new file never runs where the old one already did. Add a follow-up ` +
+        `migration instead, unless this one is certainly unapplied.`,
     };
   }
   if (isProdConfig(p)) {
@@ -259,7 +272,10 @@ export function decide(payload) {
 
     if (tool === 'Bash') return checkBash(input.command);
     if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(tool)) {
-      return checkWrite(input.file_path ?? input.notebook_path);
+      // Edit/MultiEdit always target an existing file; Write may or may not.
+      const target = input.file_path ?? input.notebook_path;
+      const exists = tool !== 'Write' || (() => { try { return existsSync(target); } catch { return false; } })();
+      return checkWrite(target, exists);
     }
     return null;
   } catch {

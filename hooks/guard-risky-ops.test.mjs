@@ -115,8 +115,6 @@ describe('ask', () => {
   });
 
   test('migrations, prod config, and credential files', () => {
-    expect(write('db/migrations/0007_add_index.sql'), 'ask', 'migration');
-    expect(write('prisma/migrations/20240101_init/migration.sql'), 'ask', 'prisma migration');
     expect(write('config/production.yml'), 'ask', 'prod config');
     expect(write('deploy/prod.tfvars'), 'ask', 'prod tfvars');
     expect(write('certs/server.pem'), 'ask', 'pem');
@@ -128,6 +126,28 @@ describe('ask', () => {
 // ===========================================================================
 // ALLOW - the false-positive suite. These are ordinary work.
 // ===========================================================================
+
+describe('migrations: the write is reversible, the edit is not', () => {
+  // Bought by a real incident: 'ask' on every NEW migration made non-interactive
+  // runs impossible — there is no operator to approve, so ask is a hard block,
+  // and two sessions built around a migration they could not create.
+  test('creating a NEW migration does not prompt — it is just a file', () => {
+    expect(write('migrations/9999_brand_new_never_exists.sql'), 'allow', 'new migration');
+    expect(write('prisma/migrations/29990101_init/migration.sql'), 'allow', 'new prisma migration');
+    expect(write('db/migrate/9999_add_index.rb'), 'allow', 'new rails migration');
+  });
+
+  test('editing an EXISTING migration asks — it may already have been applied', () => {
+    const got = expect(edit('migrations/001_create_shots.sql'), 'ask', 'edit of a migration');
+    assert.equal(got.rule, 'edit-applied-migration');
+    assert.match(got.reason, /diverge/);
+  });
+
+  test('a non-migration path is unaffected either way', () => {
+    expect(write('src/index.ts'), 'allow', 'new source file');
+    expect(edit('src/index.ts'), 'allow', 'edited source file');
+  });
+});
 
 describe('allow (false-positive guard)', () => {
   test('force-pushing a feature branch is normal work', () => {
