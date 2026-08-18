@@ -33,6 +33,12 @@ node install.mjs uninstall --target /path/to/project
 ```
 
 Profiles: `core` (skills only) · `backend` · `frontend` · `full`.
+
+**The two delivery modes differ in one way.** Installed as a plugin you get the
+50 core skills in `skills/`; stack packs in `rules/` are *not* loaded, because a
+plugin has no profile mechanism to select them. `install.mjs` is what delivers
+packs, per profile. Use the plugin for the stack-agnostic core and the installer
+when you want a project to carry stack-specific rules too.
 Flags: `--dry-run`, `--force`, `--claude-md block|sidecar|skip`.
 
 Everything placed is recorded in `.claude/harness-manifest.json` with a content
