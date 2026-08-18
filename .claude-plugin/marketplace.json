@@ -1,0 +1,15 @@
+{
+  "name": "harness",
+  "description": "A single portable agent harness: on-demand workflow skills, mechanical enforcement hooks, and a lesson vault that survives between projects.",
+  "owner": {
+    "name": "rashadmusayev19",
+    "email": "rashadmusayev19@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "harness",
+      "source": "./",
+      "description": "Portable agent harness: on-demand workflow skills, mechanical enforcement hooks, and a lesson vault that survives between projects."
+    }
+  ]
+}

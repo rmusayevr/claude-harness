@@ -1,0 +1,16 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable Claude Code agent harness: on-demand skills, mechanical enforcement hooks, and a cross-project lesson vault.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"hooks/*.test.mjs\" \"scripts/*.test.mjs\"",
+    "audit": "node scripts/audit.mjs",
+    "install-harness": "node install.mjs",
+    "listing-cost": "node scripts/listing-cost.mjs"
+  }
+}

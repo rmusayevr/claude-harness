@@ -1,0 +1,15 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# If the harness is ever installed into its own checkout for testing,
+# the installed copy is generated output, not source.
+.claude/skills/
+.claude/agents/
+.claude/hooks/
+.claude/harness/
+.claude/harness-manifest.json
+
+# Lessons are per-project knowledge, never plugin source.
+.claude/lessons/

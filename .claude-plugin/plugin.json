@@ -1,0 +1,10 @@
+{
+  "name": "harness",
+  "description": "Portable agent harness: on-demand workflow skills, mechanical enforcement hooks, and a lesson vault that survives between projects.",
+  "version": "0.1.0",
+  "author": {
+    "name": "rashadmusayev19",
+    "email": "rashadmusayev19@gmail.com"
+  },
+  "license": "MIT"
+}

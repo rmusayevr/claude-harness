@@ -1,0 +1,10 @@
+# Keep LF in the working tree on every platform.
+#
+# install.mjs records a content hash of each placed file to tell "you edited
+# this" from "this is stale". If git rewrote line endings per platform, the same
+# source would hash differently on Windows and Linux and every file would look
+# locally edited after a fresh clone.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
