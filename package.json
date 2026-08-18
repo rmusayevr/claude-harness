@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test \"hooks/*.test.mjs\" \"scripts/*.test.mjs\"",
+    "test": "node --test \"hooks/*.test.mjs\" \"scripts/*.test.mjs\" \"install.test.mjs\"",
     "audit": "node scripts/audit.mjs",
     "install-harness": "node install.mjs",
     "listing-cost": "node scripts/listing-cost.mjs"
