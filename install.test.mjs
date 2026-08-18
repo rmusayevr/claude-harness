@@ -139,7 +139,7 @@ describe('settings.json', () => {
     const s = JSON.parse(read('.claude/settings.json'));
     assert.equal(s.env.ACME_REGION, 'eu-west-1');
     assert.equal(s.hooks.PostToolUse[0].hooks[0].command, 'echo mine');
-    assert.equal(s.hooks.PreToolUse.length, 1, 'harness hook added');
+    assert.equal(s.hooks.PreToolUse.length, 2, 'both harness guards added');
   });
 
   test('a settings.json with a UTF-8 BOM is read, not rejected', () => {
@@ -164,8 +164,8 @@ describe('settings.json', () => {
     run('install');
     run('install');
     const s = JSON.parse(read('.claude/settings.json'));
-    const ours = s.hooks.PreToolUse.filter((g) => g.hooks.some((h) => h.command.includes('guard-risky-ops')));
-    assert.equal(ours.length, 1);
+    const ours = s.hooks.PreToolUse.filter((g) => g.hooks.some((h) => h.command.includes('/.claude/hooks/guard-')));
+    assert.equal(ours.length, 2, 'each guard appears exactly once after a reinstall');
   });
 });
 

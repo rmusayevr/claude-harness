@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
 const MANIFEST_NAME = '.claude/harness-manifest.json';
-const HOOK_FINGERPRINT = 'guard-risky-ops.mjs';
+const HOOK_FINGERPRINT = '/.claude/hooks/guard-';
 const BLOCK_START = '<!-- BEGIN harness';
 const BLOCK_END = '<!-- END harness';
 
@@ -133,8 +133,12 @@ async function buildPlan(profile) {
   }
   await add('agents', (s) => `.claude/agents/${s}`, 'agent');
 
-  for (const f of ['guard-risky-ops.mjs', 'guard-risky-ops.test.mjs']) {
-    plan.push({ from: path.join(SRC, 'hooks', f), to: `.claude/hooks/${f}`, kind: 'hook' });
+  // Discovered, not listed: a hardcoded list silently omits the next guard.
+  // hooks.json is not copied — it is translated into the project's settings.
+  for (const abs of await walk(path.join(SRC, 'hooks'))) {
+    const f = path.basename(abs);
+    if (!f.endsWith('.mjs')) continue;
+    plan.push({ from: abs, to: `.claude/hooks/${f}`, kind: 'hook' });
   }
   // Skills invoke these by path, so they must travel with the install.
   for (const f of ['vault.mjs', 'audit.mjs', 'listing-cost.mjs']) {
@@ -203,21 +207,23 @@ async function inspect(target, manifest) {
 
 // ------------------------------------------------------------------ settings
 
-function hookBlock() {
-  return {
-    matcher: 'Bash|Write|Edit|MultiEdit|NotebookEdit',
-    hooks: [
-      {
-        type: 'command',
-        command: `node "\${CLAUDE_PROJECT_DIR}/.claude/hooks/${HOOK_FINGERPRINT}"`,
-        timeout: 10,
-      },
-    ],
-  };
+/**
+ * `hooks/hooks.json` is the single source of truth for what the guards are and
+ * what each one matches. The installer translates it rather than restating it —
+ * a second copy of the wiring here is a copy that silently goes stale the next
+ * time a guard is added.
+ */
+async function harnessHookEvents() {
+  const cfg = JSON.parse(await readText(path.join(SRC, 'hooks/hooks.json')));
+  const translated = JSON.stringify(cfg.hooks ?? {})
+    .split(`\${CLAUDE_PLUGIN_ROOT}/hooks/`)
+    .join(`\${CLAUDE_PROJECT_DIR}/.claude/hooks/`);
+  return JSON.parse(translated);
 }
 
 const isOurs = (group) =>
-  Array.isArray(group?.hooks) && group.hooks.some((h) => typeof h?.command === 'string' && h.command.includes(HOOK_FINGERPRINT));
+  Array.isArray(group?.hooks) &&
+  group.hooks.some((h) => typeof h?.command === 'string' && h.command.includes(HOOK_FINGERPRINT));
 
 /**
  * `priorRecord` carries the createdByUs flag forward across re-installs.
@@ -238,10 +244,16 @@ async function wireSettings(target, dryRun, priorRecord) {
     }
   }
   settings.hooks ??= {};
-  settings.hooks.PreToolUse ??= [];
-  const already = settings.hooks.PreToolUse.findIndex(isOurs);
-  if (already >= 0) settings.hooks.PreToolUse[already] = hookBlock();
-  else settings.hooks.PreToolUse.push(hookBlock());
+  // Drop every group we previously placed, then add the current set. Replacing
+  // in place would strand a guard that has since been renamed or removed.
+  for (const event of Object.keys(settings.hooks)) {
+    settings.hooks[event] = (settings.hooks[event] ?? []).filter((g) => !isOurs(g));
+    if (settings.hooks[event].length === 0) delete settings.hooks[event];
+  }
+  for (const [event, groups] of Object.entries(await harnessHookEvents())) {
+    settings.hooks[event] ??= [];
+    settings.hooks[event].push(...groups);
+  }
 
   if (!dryRun) {
     await mkdir(path.dirname(p), { recursive: true });
