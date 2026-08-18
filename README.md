@@ -5,6 +5,8 @@ hooks, and a lesson vault that survives between projects.
 
 Start with [`GUIDE.md`](./GUIDE.md) — how to use it, when not to, and what it covers from first commit to production.
 
+See [`TUTORIAL.md`](./TUTORIAL.md) for a recorded run on a real project — including the rule that had to be narrowed because it blocked two build steps.
+
 Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) before extending it. It is the routing rule every
 addition gets checked against, and it explains why the volume lives where it
 does.
