@@ -107,6 +107,34 @@ The permission values are `allow`, `deny`, and `ask`
 Choosing `deny` for something an operator does routinely is how a guard gets disabled
 within a week. When in doubt, `ask`.
 
+#### `ask` is not a guarantee that anyone is asked
+
+It resolves differently depending on how the session was started, and the hook cannot
+tell which it got:
+
+| Where it runs | What `ask` actually does |
+|---|---|
+| An attended interactive session | Prompts. The intended behaviour. |
+| `claude -p`, no operator | Nothing can answer it, so it is a hard block |
+| A permission mode that pre-approves the tool | Resolved before anyone sees it |
+
+Both failures are on record. In xg-tracker an `ask` on new migration files hard-blocked
+two non-interactive runs, one of them into a ten-minute timeout; later, in the same
+project, an `ask` on an applied migration was believed to have been auto-allowed and
+nobody could tell whether it had fired at all.
+
+Two consequences for how rules here are written:
+
+- **Never let correctness depend on someone answering.** `ask` is an escalation, not a
+  gate. If the operation must not proceed unattended, it is a `deny`.
+- **A rule that hard-blocks unattended work is guarding the wrong moment.** That is a
+  signal to narrow it — the fix is a rule that fires at the destructive step, not a
+  prompt earlier that nobody is there to clear.
+
+Every non-allow decision is appended to `.claude/harness-decisions.log`, so which of the
+three happened is answerable afterwards instead of inferred. Add that path to
+`.gitignore`.
+
 ### Hooks fail open
 
 A hook that throws, times out, or receives unparseable input **exits 0 and allows the

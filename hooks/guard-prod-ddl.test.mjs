@@ -12,6 +12,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { decide } from './guard-prod-ddl.mjs';
@@ -243,6 +245,23 @@ describe('process contract', () => {
       child.stdin.end(stdin);
     });
   }
+
+  test('the ask is recorded in the decision log', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'harness-log-ddl-'));
+    mkdirSync(path.join(dir, '.claude'));
+    try {
+      await runHook(JSON.stringify(bash('node src/migrate.mjs')), { ...PROD_ENV, CLAUDE_PROJECT_DIR: dir });
+      const entry = JSON.parse(
+        readFileSync(path.join(dir, '.claude', 'harness-decisions.log'), 'utf8').trim().split('\n').at(-1),
+      );
+      assert.equal(entry.hook, 'guard-prod-ddl', 'names which guard fired');
+      assert.equal(entry.decision, 'ask');
+      assert.equal(entry.rule, 'migration-against-prod');
+      assert.match(entry.target, /node src\/migrate\.mjs/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   test('an ask exits 0 and prints the PreToolUse envelope', async () => {
     const { code, out } = await runHook(JSON.stringify(bash('alembic upgrade head')), PROD_ENV);

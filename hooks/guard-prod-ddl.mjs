@@ -25,6 +25,8 @@
  * FAIL OPEN, like every hook here: any throw exits 0 and allows.
  */
 import { pathToFileURL } from 'node:url';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // ---------------------------------------------------------------- targets
 
@@ -238,14 +240,41 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * Append every non-allow decision to `.claude/harness-decisions.log`.
+ * Same contract as the copy in guard-risky-ops, and deliberately a copy: the
+ * hooks are installed as independent files, so a shared module would be one
+ * more thing that can be missing. See that file for the reasoning.
+ */
+function record(decision, payload) {
+  try {
+    appendFileSync(
+      join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'harness-decisions.log'),
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        hook: 'guard-prod-ddl',
+        decision: decision.decision,
+        rule: decision.rule,
+        tool: payload?.tool_name,
+        target: String(payload?.tool_input?.command ?? '').slice(0, 300),
+        session: payload?.session_id,
+        mode: payload?.permission_mode,
+      }) + '\n',
+    );
+  } catch { /* never let logging change the decision */ }
+}
+
 async function main() {
   let decision = null;
+  let payload = null;
   try {
-    decision = decide(JSON.parse(await readStdin()));
+    payload = JSON.parse(await readStdin());
+    decision = decide(payload);
   } catch {
     process.exit(0);
   }
   if (!decision) process.exit(0);
+  record(decision, payload);
 
   process.stdout.write(
     JSON.stringify({

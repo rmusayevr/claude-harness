@@ -559,6 +559,15 @@ Same routing check, plus:
 
 - `deny` only for what should never happen by accident. `ask` for everything you
   might legitimately want. **When in doubt, `ask`.**
+- **Do not let the rule's correctness depend on the `ask` being answered.**
+  Unattended, it either hard-blocks or is resolved by a permission mode — see
+  *`ask` is not a guarantee that anyone is asked* in `ARCHITECTURE.md`. If the
+  operation must not proceed without a human, it is a `deny`.
+- **Decide from the file, not from the tool that touches it.** Any rule keyed on
+  a path has to be reachable from `Bash` too, or `sed -i` and `cat >` walk
+  straight past it. `guard-risky-ops` routes shell writes back through the same
+  `checkWrite`; a new path rule should do the same rather than trusting that the
+  write arrives as `Write`.
 - **Fail open.** Any throw exits 0.
 - **Ship a `.test.mjs` beside it**, and weight it toward false positives — a
   guard that over-blocks gets disabled, and a disabled guard enforces nothing.

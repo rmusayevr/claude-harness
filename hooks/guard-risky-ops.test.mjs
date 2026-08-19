@@ -9,7 +9,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -400,5 +400,58 @@ describe('process contract', () => {
     const { code, out } = await runHook('');
     assert.equal(code, 0);
     assert.equal(out.trim(), '');
+  });
+});
+
+// ===========================================================================
+// The decision log.
+//
+// Bought by xg-tracker: an `ask` was reported as having been silently
+// auto-allowed. It could not be confirmed or refuted, because a guard that
+// fired and a guard that never ran leave the same trace — none. This turns
+// that into a fact on disk.
+// ===========================================================================
+
+describe('decision log', () => {
+  let dir;
+  before(() => {
+    dir = mkdtempSync(path.join(tmpdir(), 'harness-log-'));
+    mkdirSync(path.join(dir, '.claude'));
+  });
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const logPath = () => path.join(dir, '.claude', 'harness-decisions.log');
+
+  test('a deny is recorded with the rule, the tool, and the target', async () => {
+    await runHook(JSON.stringify(bash('git push --force origin main')), { CLAUDE_PROJECT_DIR: dir });
+    const lines = readFileSync(logPath(), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const entry = lines.at(-1);
+    assert.equal(entry.decision, 'deny');
+    assert.equal(entry.rule, 'git-push-force-protected');
+    assert.equal(entry.tool, 'Bash');
+    assert.match(entry.target, /git push --force origin main/);
+    assert.ok(Date.parse(entry.ts), 'timestamped');
+  });
+
+  test('an ask is recorded — the case the log exists for', async () => {
+    await runHook(JSON.stringify(bash('terraform apply')), { CLAUDE_PROJECT_DIR: dir });
+    const entry = JSON.parse(readFileSync(logPath(), 'utf8').trim().split('\n').at(-1));
+    assert.equal(entry.decision, 'ask');
+    assert.equal(entry.rule, 'deploy-command');
+  });
+
+  test('an allowed call writes nothing — the log stays readable', async () => {
+    const before = readFileSync(logPath(), 'utf8');
+    await runHook(JSON.stringify(bash('npm test')), { CLAUDE_PROJECT_DIR: dir });
+    assert.equal(readFileSync(logPath(), 'utf8'), before);
+  });
+
+  test('an unwritable log does not change the decision', async () => {
+    const { code, out } = await runHook(JSON.stringify(bash('git push --force origin main')), {
+      CLAUDE_PROJECT_DIR: path.join(dir, 'no', 'such', 'place'),
+    });
+    assert.equal(code, 0);
+    assert.equal(JSON.parse(out).hookSpecificOutput.permissionDecision, 'deny',
+      'the guard still guards when it cannot write');
   });
 });

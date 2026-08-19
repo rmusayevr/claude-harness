@@ -16,7 +16,8 @@
  */
 
 import { pathToFileURL } from 'node:url';
-import { existsSync } from 'node:fs';
+import { existsSync, appendFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // ---------------------------------------------------------------- helpers
 
@@ -387,15 +388,53 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * Append every non-allow decision to `.claude/harness-decisions.log`.
+ *
+ * `ask` has no single meaning. With an operator present it prompts; in a
+ * `claude -p` run there is nobody to answer, so it is a hard block; and a
+ * permission mode can resolve it before anyone sees it. Afterwards the three
+ * are indistinguishable — a fired guard and a guard that never ran look the
+ * same, which is how xg-tracker spent a session arguing about which had
+ * happened.
+ *
+ * One JSON line per decision makes it checkable instead of arguable. It also
+ * answers the question `harness-status` could not: is this hook live?
+ *
+ * Best-effort and silent. A guard that cannot write its log is still a guard,
+ * so every failure here is swallowed.
+ */
+function record(decision, payload) {
+  try {
+    const input = payload?.tool_input ?? {};
+    appendFileSync(
+      join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'harness-decisions.log'),
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        hook: 'guard-risky-ops',
+        decision: decision.decision,
+        rule: decision.rule,
+        tool: payload?.tool_name,
+        target: String(input.command ?? input.file_path ?? input.notebook_path ?? '').slice(0, 300),
+        session: payload?.session_id,
+        mode: payload?.permission_mode,
+      }) + '\n',
+    );
+  } catch { /* never let logging change the decision */ }
+}
+
 async function main() {
   let decision = null;
+  let payload = null;
   try {
     const raw = await readStdin();
-    decision = decide(JSON.parse(raw));
+    payload = JSON.parse(raw);
+    decision = decide(payload);
   } catch {
     process.exit(0); // unparseable payload -> allow
   }
   if (!decision) process.exit(0); // no decision -> say nothing
+  record(decision, payload);
 
   process.stdout.write(
     JSON.stringify({

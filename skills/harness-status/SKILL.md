@@ -51,6 +51,25 @@ Files on disk are not the same as an active harness. Confirm:
 A harness that is installed but unwired is the worst state, because it looks
 present and enforces nothing.
 
+### Wired is not the same as live
+
+All three checks above pass on a project whose hooks Claude Code never loads.
+They read files; they do not observe a hook running in this session.
+
+- **`.claude/harness-decisions.log`** is the only direct evidence. Every `deny`
+  and every `ask` appends a line. If guards have fired in this project, there
+  are lines; if the file is absent or stale while guarded work has happened,
+  the hooks are not running, whatever `settings.json` says.
+- **Project settings load only in a trusted workspace.** When
+  `projects[<path>].hasTrustDialogAccepted` is `false` in `~/.claude.json`,
+  `permissions.allow` is ignored — the visible symptom is allowlisted commands
+  still prompting or failing. Treat that symptom as a reason to distrust every
+  other conclusion about whether guards are active.
+
+Report liveness as a separate line from installation: *installed and firing*,
+*installed and never seen to fire*, or *not installed*. The middle state is the
+one worth naming out loud.
+
 ## Report
 
 Say plainly: the profile, how many files are clean, what drifted, and whether
