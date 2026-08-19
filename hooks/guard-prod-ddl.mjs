@@ -33,7 +33,20 @@ const DB_ENV_VARS = [
   'DATABASE_URL', 'DATABASE_URI', 'DB_URL', 'DB_URI',
   'POSTGRES_URL', 'POSTGRESQL_URL', 'MYSQL_URL', 'MONGO_URL', 'MONGODB_URI',
   'PGHOST', 'MYSQL_HOST', 'DB_HOST',
+  'DATABASE_PATH', 'DB_PATH', 'SQLITE_PATH', 'DATABASE_FILE', 'DB_FILE',
 ];
+
+/**
+ * Projects name their own: XG_DB_PATH, APP_DATABASE_URL, SVC_DB_DSN. A fixed
+ * list only ever covers the tools someone already thought of, and the variable
+ * a project actually uses is the one the guard most needs to read.
+ *
+ * Bought by xg-tracker: XG_DB_PATH was the only variable selecting that
+ * project's database, and the guard could not see it.
+ */
+const DB_ENV_SHAPE = /(^|_)(DB|DATABASE)_(URL|URI|PATH|FILE|DSN|HOST|NAME)$/;
+
+const isDbEnvVar = (name) => DB_ENV_VARS.includes(name) || DB_ENV_SHAPE.test(name);
 
 const LOOPBACK = /^(localhost|127(\.\d+){3}|0\.0\.0\.0|\[?::1\]?|host\.docker\.internal)$/i;
 
@@ -53,6 +66,9 @@ function hostOf(target) {
   if (/^[\w.-]+$/.test(s)) return s;
   return null;
 }
+
+/** A file-backed database (SQLite and friends) has a path, not a host. */
+const DB_FILE = /\.(db|db3|sqlite|sqlite3|duckdb)$/i;
 
 // ---------------------------------------------------------------- commands
 
@@ -77,11 +93,27 @@ const MIGRATION_CMDS = [
   /(^|\s)(npx\s+)?drizzle-kit\s+(push|migrate)\b/,
   /(^|\s)(npm|pnpm|yarn)\s+run\s+[\w:-]*migrat/i,
   /(^|\s)tern\s+migrate\b/,
+  // A hand-rolled runner: `node src/migrate.mjs`, `python scripts/migrate.py`,
+  // `bun run db/migrate.ts`. Every project that outgrows a framework's tool
+  // writes one, and it applies exactly the same schema change.
+  //
+  // Bought by xg-tracker: `npm run db:migrate` matched and prompted, while
+  // `node src/migrate.mjs` — the same migration, and the form that project was
+  // actually using because `npm run` was blocked — did not.
+  //
+  // The script's own FILENAME must start with `migrat` — `src/migrate.mjs`, not
+  // `src/premigration_check.py`, which merely mentions it.
+  //
+  // ACCEPTED FALSE POSITIVE: a read-only subcommand of such a script
+  // (`node src/migrate.mjs status`) prompts, because nothing in the arguments
+  // distinguishes it from an apply. One confirmation is cheaper than the miss,
+  // and `--dry-run` / `--check` still leave through OFFLINE below.
+  /(^|\s)(node|nodejs|python3?|deno|bun|tsx|ts-node|ruby|php)\s+(?:(?:run|exec)\s+)?(?:-{1,2}[\w-]+(?:=\S+)?\s+)*(?:\S*[\\/])?migrat\S*/i,
 ];
 
 /** Raw DDL, but only when handed to a database client. */
 const DDL = /\b(alter\s+table|drop\s+(table|column|database|schema|index|constraint)|truncate\s+table|rename\s+table|create\s+(unique\s+)?index)\b/i;
-const DB_CLIENT = /(^|\s)(psql|mysql|mariadb|mongosh|sqlcmd|clickhouse-client|cockroach\s+sql)\b/;
+const DB_CLIENT = /(^|\s)(psql|mysql|mariadb|mongosh|sqlcmd|clickhouse-client|cockroach\s+sql|sqlite3?|litecli|duckdb)\b/;
 
 /** Offline / read-only escape hatches that must never prompt. */
 const OFFLINE = /(--sql\b|--dry-run\b|--check\b|--plan\b|-n\b(?!\S))/;
@@ -112,7 +144,7 @@ function resolveTarget(segment, env) {
   // 1. Inline: DATABASE_URL=... command
   for (const tok of raw) {
     const m = tok.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (m && DB_ENV_VARS.includes(m[1]) && m[2]) return { value: unquote(m[2]), source: `inline ${m[1]}` };
+    if (m && isDbEnvVar(m[1]) && m[2]) return { value: unquote(m[2]), source: `inline ${m[1]}` };
   }
 
   // 2. Explicit flag or positional connection string.
@@ -126,10 +158,20 @@ function resolveTarget(segment, env) {
   const hostFlag = joined.match(/(?:^|\s)(?:-h|--host)[= ]([\w.-]+)/);
   if (hostFlag) return { value: hostFlag[1], source: '--host' };
 
-  // 3. Ambient environment.
+  // 2b. A database FILE given positionally: `sqlite3 /srv/prod/app.db "..."`.
+  //     Flags and the command word itself are skipped.
+  for (const tok of raw.map(unquote).slice(1)) {
+    if (!tok.startsWith('-') && DB_FILE.test(tok)) return { value: tok, source: 'database file' };
+  }
+
+  // 3. Ambient environment. The named list first, so its `source` label is the
+  //    familiar one, then anything else shaped like a database variable.
   for (const name of DB_ENV_VARS) {
     const v = env?.[name];
     if (v) return { value: v, source: `$${name}` };
+  }
+  for (const [name, v] of Object.entries(env ?? {})) {
+    if (v && DB_ENV_SHAPE.test(name)) return { value: v, source: `$${name}` };
   }
   return null;
 }
@@ -172,7 +214,7 @@ export function decide(payload, env = process.env) {
 
       if (classify(target.value) !== 'prod') continue;
 
-      const host = hostOf(target.value) ?? target.value;
+      const host = (DB_FILE.test(target.value) ? null : hostOf(target.value)) ?? target.value;
       return {
         decision: 'ask',
         rule: isRawDdl ? 'raw-ddl-against-prod' : 'migration-against-prod',

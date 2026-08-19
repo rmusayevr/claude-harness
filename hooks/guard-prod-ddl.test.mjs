@@ -79,7 +79,62 @@ describe('ask — migration aimed at production', () => {
 });
 
 // ===========================================================================
+// ===========================================================================
+// Bought by xg-tracker. Each of these was probed and ALLOWED before the fix.
+describe('ask — targets this guard used to be unable to see', () => {
+  test('a hand-rolled migration runner, not a framework tool', () => {
+    for (const cmd of [
+      'node src/migrate.mjs',
+      'node --experimental-sqlite src/migrate.mjs',
+      'python scripts/migrate.py',
+      'python3 db/migrate.py --yes',
+      'bun run db/migrate.ts',
+      'tsx db/migrate.ts',
+      'ruby db/migrate.rb',
+    ]) {
+      const got = expect(cmd, 'ask', PROD_ENV);
+      assert.equal(got.rule, 'migration-against-prod');
+    }
+  });
+
+  test('a project-named database variable', () => {
+    for (const [name, value] of [
+      ['XG_DB_PATH', '/srv/prod/xg.db'],
+      ['APP_DATABASE_URL', 'postgres://u@prod-db.acme.com/app'],
+      ['SVC_DB_DSN', 'postgres://u@prod-db.acme.com/app'],
+      ['ANALYTICS_DATABASE_URI', 'postgres://u@prod-db.acme.com/app'],
+    ]) {
+      const got = expect('npm run db:migrate', 'ask', { [name]: value }, `$${name}`);
+      assert.ok(got.reason.includes('from $' + name), 'names the variable the operator has to check');
+    }
+  });
+
+  test('a file-backed database named on the command line', () => {
+    const got = expect('sqlite3 /srv/prod/xg.db "DROP TABLE shots_synthetic"', 'ask', {});
+    assert.equal(got.rule, 'raw-ddl-against-prod');
+    assert.match(got.reason, /srv\/prod\/xg\.db/, 'names the file, not a hostname parsed out of it');
+    expect('sqlite3 /srv/production/app.sqlite3 "ALTER TABLE orders ADD COLUMN x INT"', 'ask', {});
+    expect('duckdb /data/prod/warehouse.duckdb "DROP TABLE staging"', 'ask', {});
+  });
+});
+
+// ===========================================================================
 describe('allow — the false-positive suite', () => {
+  test('the new patterns do not fire on local work', () => {
+    expect('node src/migrate.mjs', 'allow', DEV_ENV);
+    expect('node src/migrate.mjs', 'allow', {}, 'no resolvable target: the deliberate under-block still holds');
+    expect('node src/migrate.mjs', 'allow', { XG_DB_PATH: './xg.db' });
+    expect('sqlite3 xg.db "DROP TABLE shots_synthetic"', 'allow', {},
+      'a relative path in the working directory is the local database');
+    expect('sqlite3 ./data/dev.sqlite "DROP TABLE t"', 'allow', {});
+    expect('sqlite3 /srv/prod/xg.db "SELECT count(*) FROM shots"', 'allow', {},
+      'reading production is not DDL');
+    expect('node src/premigration_check.mjs', 'allow', PROD_ENV,
+      'the filename merely mentions migration');
+    expect('node src/server.mjs', 'allow', PROD_ENV);
+    expect('npm run migrate:status', 'ask', PROD_ENV, 'pre-existing npm behaviour is unchanged');
+  });
+
   test('local and non-production targets', () => {
     expect('alembic upgrade head', 'allow', DEV_ENV);
     expect('alembic upgrade head', 'allow', STAGING_ENV);
