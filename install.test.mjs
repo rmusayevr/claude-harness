@@ -310,6 +310,25 @@ describe('manifest and portability', () => {
     assert.deepEqual(readdirSync(proj), ['main.py']);
   });
 
+  test('update KEEPS the installed profile instead of silently downgrading it', () => {
+    // Found in a real project: a `full` install came back as `core` after an
+    // update, with both stack packs deleted. parseArgs defaults profile to
+    // 'core', so `opts.profile ?? manifest.profile` never fell through.
+    run('install', '--profile', 'full');
+    assert.ok(skillNames().includes('stateful-markers'), 'packs present before update');
+    run('update');
+    assert.equal(manifest().profile, 'full', 'update must not change the profile');
+    assert.ok(skillNames().includes('stateful-markers'), 'backend pack survived the update');
+    assert.ok(skillNames().includes('loading-and-empty'), 'frontend pack survived the update');
+  });
+
+  test('update DOES change the profile when one is explicitly passed', () => {
+    run('install', '--profile', 'full');
+    run('update', '--profile', 'core');
+    assert.equal(manifest().profile, 'core');
+    assert.ok(!skillNames().includes('stateful-markers'), 'explicit downgrade still works');
+  });
+
   test('update re-reads the local checkout without a network fetch', () => {
     run('install');
     rmSync(p('.claude/skills/handoff/SKILL.md'));

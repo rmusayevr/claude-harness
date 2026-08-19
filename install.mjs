@@ -88,16 +88,16 @@ async function walk(dir) {
 
 function parseArgs(argv) {
   const cmds = new Set(['install', 'update', 'repair', 'uninstall', 'status']);
-  const opts = { command: 'install', profile: 'core', target: process.cwd(), claudeMd: 'block', force: false, dryRun: false };
+  const opts = { command: 'install', profile: 'core', target: process.cwd(), claudeMd: 'block', force: false, dryRun: false, profileExplicit: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (cmds.has(a)) opts.command = a;
     else if (a === '--force') opts.force = true;
     else if (a === '--dry-run') opts.dryRun = true;
-    else if (a === '--profile') opts.profile = argv[++i];
+    else if (a === '--profile') { opts.profile = argv[++i]; opts.profileExplicit = true; }
     else if (a === '--target') opts.target = path.resolve(argv[++i]);
     else if (a === '--claude-md') opts.claudeMd = argv[++i];
-    else if (a.startsWith('--profile=')) opts.profile = a.slice(10);
+    else if (a.startsWith('--profile=')) { opts.profile = a.slice(10); opts.profileExplicit = true; }
     else if (a.startsWith('--target=')) opts.target = path.resolve(a.slice(9));
     else if (a.startsWith('--claude-md=')) opts.claudeMd = a.slice(12);
     else if (a === '--uninstall') opts.command = 'uninstall';
@@ -604,7 +604,14 @@ async function cmdUpdate(opts) {
   const manifest = await readManifest(opts.target);
   if (!manifest) fail('nothing to update — no manifest found. Run install first.');
   console.log(C.dim(`updating from ${manifest.source || rel(SRC)} (local checkout, no download)`));
-  await cmdInstall({ ...opts, profile: opts.profile ?? manifest.profile });
+  // Keep the installed profile unless --profile was EXPLICITLY passed. parseArgs
+  // defaults profile to 'core', so it is never undefined — an   // here silently downgraded every update to core and deleted the stack packs.
+  // Keep the installed profile unless --profile was EXPLICITLY passed.
+  // parseArgs defaults profile to 'core', so it is never undefined, and the
+  // previous `opts.profile ?? manifest.profile` therefore always resolved to
+  // 'core' — silently downgrading every update and deleting the stack packs.
+  // Found in a real project: a `full` install came back as `core`, two packs gone.
+  await cmdInstall({ ...opts, profile: opts.profileExplicit ? opts.profile : manifest.profile });
 }
 
 async function cmdUninstall(opts) {
