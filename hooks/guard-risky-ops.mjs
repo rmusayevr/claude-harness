@@ -200,6 +200,103 @@ function checkDeploy(t, segment) {
   return null;
 }
 
+/**
+ * Files a shell segment writes to.
+ *
+ * The write rules below decide from a path, and until now they could only be
+ * reached from Write/Edit/MultiEdit. `cat > .env` and `sed -i migrations/003.sql`
+ * hit exactly the same files and were not seen at all — so every rule in the
+ * write section was advisory the moment work went through a shell.
+ *
+ * Bought by xg-tracker: two already-applied migrations were edited and the
+ * `edit-applied-migration` prompt never appeared. It was read as `ask`
+ * degrading to a silent allow; the hook had simply never been handed the call.
+ *
+ * Quoting is tracked properly, so `git commit -m "redirect output > .env"`
+ * mentions a path and does not write one.
+ */
+function redirectTargets(segment) {
+  const s = String(segment);
+  const out = [];
+  let quote = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c !== '>') continue;
+
+    let j = i + 1;
+    if (s[j] === '>') j++;
+    while (s[j] === ' ' || s[j] === '\t') j++;
+    if (s[j] === '&') continue; // `>&2` duplicates a descriptor, writes no file
+
+    let tok = '';
+    let tq = null;
+    for (; j < s.length; j++) {
+      const d = s[j];
+      if (tq) { if (d === tq) tq = null; else tok += d; continue; }
+      if (d === '"' || d === "'") { tq = d; continue; }
+      if (/[\s|&;<>]/.test(d)) break;
+      tok += d;
+    }
+    if (tok) out.push(tok);
+    i = j - 1;
+  }
+  return out;
+}
+
+/** `-i`, `-i.bak`, `-pi`, `--in-place` — an editor rewriting the file in place. */
+const IN_PLACE = (x) => x === '--in-place' || /^-{1,2}[a-zA-Z]*i[\w.]*$/.test(x);
+
+function writeTargets(t, segment) {
+  const out = redirectTargets(segment);
+  const cmd = base(t[0] ?? '');
+  const rest = t.slice(1);
+  const positional = rest.filter((x) => !x.startsWith('-'));
+
+  if (/^(sed|perl|ruby|gawk)$/.test(cmd) && rest.some(IN_PLACE)) out.push(...positional);
+  if (cmd === 'tee') out.push(...positional);
+  if (/^(cp|mv|install|rsync)$/.test(cmd) && positional.length >= 2) out.push(positional[positional.length - 1]);
+  if (/^(truncate|shred)$/.test(cmd)) out.push(...positional);
+  if (cmd === 'dd') {
+    for (const x of rest) {
+      const m = x.match(/^of=(.+)$/);
+      if (m) out.push(m[1]);
+    }
+  }
+  return out.filter(Boolean);
+}
+
+function fileExists(p) {
+  try { return existsSync(p); } catch { return false; }
+}
+
+/**
+ * Same rules, same reasons, arrived at through Bash. The rule name carries
+ * `-via-bash` so the decision log distinguishes the two routes: if this is the
+ * only form that ever fires, the tool-level guard is not being reached.
+ *
+ * Existence is resolved against the hook's working directory. When that is
+ * wrong the answer is "does not exist", which under-asks rather than
+ * interrupting — the same direction every other undecidable case takes here.
+ */
+function checkBashWrite(t, segment) {
+  for (const target of writeTargets(t, segment)) {
+    const hit = checkWrite(target, fileExists(target));
+    if (hit) {
+      return {
+        ...hit,
+        rule: `${hit.rule}-via-bash`,
+        reason: `${hit.reason} Reached through a shell command, but it is the same file the Write guard covers.`,
+      };
+    }
+  }
+  return null;
+}
+
 function checkBash(command) {
   for (const segment of segments(command)) {
     const t = tokens(segment);
@@ -208,7 +305,8 @@ function checkBash(command) {
       checkGitPush(t, segment) ??
       checkRm(t, segment) ??
       checkGitDiscard(t, segment) ??
-      checkDeploy(t, segment);
+      checkDeploy(t, segment) ??
+      checkBashWrite(t, segment);
     if (hit) return hit;
   }
   return null;

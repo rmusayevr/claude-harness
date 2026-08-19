@@ -5,10 +5,12 @@
  * things but also blocks ordinary work gets disabled within a week, and a
  * disabled guard enforces nothing. False-positive coverage is not optional here.
  */
-import { test, describe } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { decide } from './guard-risky-ops.mjs';
@@ -149,6 +151,84 @@ describe('migrations: the write is reversible, the edit is not', () => {
   });
 });
 
+// ===========================================================================
+// The same write rules, reached through Bash.
+//
+// Bought by xg-tracker: two applied migrations were edited with no prompt,
+// because every rule above was reachable only from Write/Edit/MultiEdit and
+// the edits went through a shell. A guard the tool choice can walk past is
+// not a guard.
+// ===========================================================================
+
+describe('shell writes reach the same rules', () => {
+  let dir;
+  before(() => {
+    dir = mkdtempSync(path.join(tmpdir(), 'harness-guard-'));
+    mkdirSync(path.join(dir, 'migrations'));
+    writeFileSync(path.join(dir, 'migrations', '003_applied.sql'), '-- applied\n');
+  });
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const at = (...p) => path.join(dir, ...p).split(path.sep).join('/');
+
+  test('a dotenv write is denied through a redirect', () => {
+    for (const cmd of [
+      'echo "API_KEY=live_123" >> .env',
+      'cat .env.example > .env',
+      'printf "X=1" > apps/api/.env.production',
+      'cp /tmp/staged .env.local',
+      'tee .env < /tmp/staged',
+    ]) {
+      const got = expect(bash(cmd), 'deny', cmd);
+      assert.equal(got.rule, 'write-dotenv-via-bash', 'the route is named so the log can tell them apart');
+    }
+  });
+
+  test('a private key written by any shell route is denied', () => {
+    expect(bash('cp /tmp/key ~/.ssh/id_rsa'), 'deny', 'cp into place');
+    expect(bash('ssh-keygen -y -f a > id_ed25519'), 'deny', 'redirect into place');
+  });
+
+  test('credential and production-config files still ask', () => {
+    expect(bash('vault read -format=json secret/app > credentials.json'), 'ask', 'credential file');
+    expect(bash('printf "x" > deploy/production.yaml'), 'ask', 'prod config');
+    expect(bash('mv rendered.yaml config/prod.yml'), 'ask', 'moved into place');
+  });
+
+  test('an applied migration edited in place asks, exactly as Edit does', () => {
+    for (const cmd of [
+      `sed -i 's/a/b/' ${at('migrations', '003_applied.sql')}`,
+      `perl -pi -e 's/a/b/' ${at('migrations', '003_applied.sql')}`,
+      `cat > ${at('migrations', '003_applied.sql')}`,
+      `echo "-- fix" >> ${at('migrations', '003_applied.sql')}`,
+    ]) {
+      const got = expect(bash(cmd), 'ask', cmd);
+      assert.equal(got.rule, 'edit-applied-migration-via-bash');
+    }
+  });
+
+  test('a NEW migration written through the shell is still just a file', () => {
+    expect(bash(`cat > ${at('migrations', '005_not_yet.sql')}`), 'allow', 'does not exist yet');
+  });
+
+  test('mentions, reads, and ordinary redirects are not writes', () => {
+    for (const cmd of [
+      'git commit -m "document how to redirect output > .env"',
+      'echo "cat > .env"',
+      `sed -n '1,5p' ${at('migrations', '003_applied.sql')}`,
+      `grep -c . ${at('migrations', '003_applied.sql')}`,
+      'npm run build > build.log',
+      'node src/server.mjs 2>&1 > /dev/null',
+      'echo hi > notes.txt',
+      'cat > src/db.mjs',
+      'diff a.yaml b.yaml > /tmp/out.diff',
+      'ls -la >&2',
+    ]) {
+      expect(bash(cmd), 'allow', cmd);
+    }
+  });
+});
+
 describe('allow (false-positive guard)', () => {
   test('force-pushing a feature branch is normal work', () => {
     for (const cmd of [
@@ -276,9 +356,9 @@ describe('fail open', () => {
 // PROCESS CONTRACT - exit codes and stdout shape
 // ===========================================================================
 
-function runHook(stdin) {
+function runHook(stdin, env) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [HOOK], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [HOOK], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
     let out = '';
     let err = '';
     child.stdout.on('data', (d) => (out += d));
