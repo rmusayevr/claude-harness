@@ -66,8 +66,9 @@ wrong. Stop and say which, instead of starting round four (`split-a-big-change`)
 
 ## Incidents
 
-- **Client web project, four PRs in a row (2026-11).** Every `/code-review` round came back with
-  5 to 10 findings, fixes were applied, and the next round found more. The
-  owner asked "why are the problems not finishing?" and "you tell me accept it
-  but every time it shows me some issues". The cycle ended only when "ready"
-  was defined as zero open blockers and decisions, not zero findings.
+- **Client web project, four PRs in a row (2026-11).** Every `/code-review`
+  round came back with 5 to 10 findings, fixes were applied, and the next round
+  found more. The owner asked "why are the problems not finishing?" and "you
+  tell me accept it but every time it shows me some issues". The cycle ended
+  only when "ready" was defined as zero open blockers and decisions, not zero
+  findings.

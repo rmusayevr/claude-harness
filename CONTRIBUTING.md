@@ -11,7 +11,8 @@ over-blocks gets switched off, and then it protects nothing. Use the
 
 ## Before you add anything
 
-Read [`ARCHITECTURE.md`](./ARCHITECTURE.md). It decides where a rule goes:
+Read [`ARCHITECTURE.md`](./ARCHITECTURE.md). It decides where a rule goes
+([`EXTENDING.md`](./EXTENDING.md) has the full checklist):
 
 - **Can a script decide it from the command or the file path?** Then it's a
   guard (a hook), not prose.

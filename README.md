@@ -50,6 +50,11 @@ These run on every command, whether Claude remembers the rules or not.
 - **Asks you first:** `git reset --hard`, deleting non-build folders, deploys,
   database migrations aimed at production, merging a PR with failing checks.
 
+They're a safety net, not a wall. A guard reads the command as written, so
+something indirect, like a path in a variable or a script that does the work,
+can get past it. They catch accidents, not someone set on getting around them.
+Keep branch protection and file permissions too.
+
 If a guard blocks something it shouldn't, that's a bug. Please
 [open an issue](https://github.com/rmusayevr/claude-harness/issues).
 
@@ -70,7 +75,7 @@ Everything else happens without being asked.
 - [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 53 checklists, grouped by situation
 - [`GUIDE.md`](./GUIDE.md): the full guide, including when *not* to use it
 - [`TUTORIAL.md`](./TUTORIAL.md): a recorded run on a real project
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it
+- [`EXTENDING.md`](./EXTENDING.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it
 
 ---
 
@@ -141,6 +146,7 @@ in `<project>/.claude/lessons/`. One recorded in two or more projects moves to
 npm test               # every guard, the vault and the installer
 npm run audit          # the harness checks itself
 npm run listing-cost   # what the skill list costs per session
+npm run usage          # which skills a project actually used
 ```
 
 Guard tests are weighted toward false positives: a guard that over-blocks gets

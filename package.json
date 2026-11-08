@@ -12,6 +12,7 @@
     "audit": "node scripts/audit.mjs",
     "install-harness": "node install.mjs",
     "listing-cost": "node scripts/listing-cost.mjs",
-    "diagram": "node scripts/build-diagram.mjs"
+    "diagram": "node scripts/build-diagram.mjs",
+    "usage": "node scripts/usage.mjs"
   }
 }

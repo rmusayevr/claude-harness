@@ -2,7 +2,7 @@
 /**
  * Turns the harness on itself — the mechanically decidable half.
  *
- *   node scripts/audit.mjs [--target <installed-project>] [--json] [--threshold 0.4]
+ *   node scripts/audit.mjs [--target <installed-project>] [--json] [--verbose] [--threshold 0.4]
  *
  * Everything here is decidable from files on disk, so per ARCHITECTURE.md it
  * belongs in a script rather than in prose asking Claude to check carefully.
@@ -20,6 +20,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const asJson = args.includes('--json');
+const verbose = args.includes('--verbose');
+// A kind that repeats more than this prints as one summary line unless --verbose.
+// 52 identical "no-incident" lines buried the one finding that needed action.
+const FOLD_OVER = 3;
 const threshold = Number(args[args.indexOf('--threshold') + 1]) || 0.4;
 const target = args.includes('--target') ? path.resolve(args[args.indexOf('--target') + 1]) : null;
 
@@ -129,7 +133,7 @@ for (const h of hookFiles.filter((f) => f.endsWith('.mjs') && !f.endsWith('.test
 
 // 6. Executable scripts with no test. Reporting tools are exempt (they have no
 //    decision to get wrong); anything that WRITES to a project is not.
-const REPORT_ONLY = new Set(['audit.mjs', 'listing-cost.mjs']);
+const REPORT_ONLY = new Set(['audit.mjs', 'listing-cost.mjs', 'usage.mjs']);
 const scriptNames = (await walk(path.join(ROOT, 'scripts'))).map((f) => path.basename(f));
 const rootScripts = (await readdir(ROOT, { withFileTypes: true }))
   .filter((e) => e.isFile() && e.name.endsWith('.mjs'))
@@ -202,9 +206,18 @@ if (asJson) {
   for (const [sev, label, paint] of [['high', 'HIGH', C.red], ['medium', 'MEDIUM', C.yellow], ['info', 'INFO', C.dim]]) {
     if (!bySeverity[sev].length) continue;
     console.log(`\n${paint(label)} (${bySeverity[sev].length})`);
-    for (const f of bySeverity[sev]) {
-      console.log(`  [${f.kind}] ${f.message}`);
-      if (f.detail) console.log(`      ${C.dim(f.detail)}`);
+    const byKind = new Map();
+    for (const f of bySeverity[sev]) byKind.set(f.kind, [...(byKind.get(f.kind) ?? []), f]);
+    for (const [kind, list] of byKind) {
+      if (!verbose && list.length > FOLD_OVER) {
+        console.log(`  [${kind}] ${list.length} findings, e.g. ${list[0].message}`);
+        console.log(`      ${C.dim('run with --verbose to list them all')}`);
+        continue;
+      }
+      for (const f of list) {
+        console.log(`  [${f.kind}] ${f.message}`);
+        if (f.detail) console.log(`      ${C.dim(f.detail)}`);
+      }
     }
   }
   console.log(`\n${'='.repeat(52)}`);

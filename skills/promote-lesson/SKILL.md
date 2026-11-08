@@ -39,13 +39,10 @@ Try more than one slug — the same lesson under a different name is the duplica
 this whole design exists to prevent. The command reports near-miss slugs; read
 them.
 
-**If it is already recorded, do not add a second entry.** Sharpen the existing
-one: rewrite the `**Rule:**` line so it covers *both* occurrences, and append
-the new occurrence under `## Occurrences`. Two occurrences usually reveal the
-rule was stated too narrowly the first time; the second case is the evidence for
-generalizing it correctly. A rule that has failed twice must *read* as having
-failed twice — more specific and more emphatic, not trailed by a near-duplicate
-bullet.
+**If it is already recorded, do not add a second entry.** Sharpen it: rewrite
+the `**Rule:**` line to cover *both* occurrences (the second usually shows the
+first was stated too narrowly) and append the new one under `## Occurrences`.
+A rule that failed twice must *read* as having failed twice.
 
 ## 3. Route it: at what moment would this have had to be in front of me?
 
@@ -59,10 +56,8 @@ still fires in time.**
 | In plain conversation, before any skill loaded | **`CLAUDE.md`** | The only layer always present. Most expensive — justify it. |
 | Only when someone asks "have we hit this before?" | **Vault only** | Reference, not enforcement. |
 
-Bias downward in that table. A lesson in `CLAUDE.md` is paid in every session
-and inside every subagent; a lesson in a skill body is paid only when relevant.
-If the mistake only happens while doing X, it belongs in X's skill, not in
-`CLAUDE.md`.
+Bias downward: `CLAUDE.md` is paid in every session and every subagent. If
+the mistake only happens while doing X, it belongs in X's skill.
 
 ## 4. If it is mechanically decidable — propose, do not write
 
@@ -93,10 +88,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/vault.mjs record \
 
 Write the body as the incident, not as advice: *"CS-64 and CS-65 both shipped
 Redis markers nothing ever cleared; 3h incident each"* — not *"be careful with
-Redis keys"*. Lessons stay **local** by default; seen in a second project the
-vault graduates them automatically. Repetition within one project never
-graduates — that is a project-specific problem, and copying it everywhere is how
-a shared vault fills with irrelevant context.
+Redis keys"*. Lessons stay **local**; seen in a second project, the vault
+graduates them. Repetition within one project never graduates.
 
 ## 6. Apply it where it was routed
 

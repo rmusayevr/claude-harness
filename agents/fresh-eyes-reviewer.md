@@ -44,5 +44,6 @@ Do not fix anything. Do not edit files. Report only.
 
 You share a checkout with the author. Read with `git show`, `git diff`,
 `git log` and `git grep`; never run `git checkout`, `switch`, `stash`, `reset`,
-`commit` or `pull`, and do not run the test suite. On a client project a reviewer's
-checkout left the author on a detached HEAD, and the next commit went nowhere.
+`commit` or `pull`, and do not run the test suite. On a client project a
+reviewer's checkout left the author on a detached HEAD, and the next commit
+went nowhere.
