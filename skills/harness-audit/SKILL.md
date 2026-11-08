@@ -49,7 +49,8 @@ name what the other explicitly does not cover.
 
 ### Does each rule name its cost?
 
-The script reports `no-incident` for every skill still carrying the placeholder.
+The script counts the skills still carrying the placeholder as `no-incident`
+(`--verbose` lists them).
 Most of those are fine — a seeded skill is reasoning, not a lesson, and it
 should not have a fabricated incident.
 
