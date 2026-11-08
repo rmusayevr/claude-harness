@@ -187,6 +187,93 @@ describe('a lesson carries its rule', () => {
   });
 });
 
+describe('the rule across projects and awkward files', () => {
+  const slug = 'markers-need-ttl';
+  const rec = (dir, ...flags) =>
+    vaultRun(['record', '--slug', slug, '--title', 'T', '--layer', 'l', '--body', bodyFile, '--project-dir', dir, ...flags]);
+  const localFile = (dir) => path.join(dir, '.claude/lessons', `${slug}.md`);
+  const globalText = () => readFileSync(path.join(vault, `${slug}.md`), 'utf8');
+
+  test('a rule sharpened in the second project is the one in the global copy', () => {
+    rec(projA, '--rule', 'A rule (narrow).');
+    rec(projB, '--rule', 'B rule (covers both).');
+    assert.match(globalText(), /\*\*Rule:\*\* B rule \(covers both\)\./);
+    rec(projB, '--rule', 'B sharpened again.');
+    assert.match(globalText(), /\*\*Rule:\*\* B sharpened again\./);
+  });
+
+  test('recording without --rule afterwards does not put the narrower rule back', () => {
+    rec(projA, '--rule', 'A rule (narrow).');
+    rec(projB, '--rule', 'B rule (covers both).');
+    const r = rec(projA);
+    assert.equal(r.code, 0, r.err);
+    assert.match(globalText(), /\*\*Rule:\*\* B rule \(covers both\)\./);
+  });
+
+  test('a second project starts from the existing rule instead of inventing one', () => {
+    rec(projA, '--rule', 'A rule.');
+    const r = rec(projB);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /taken from the existing lesson/);
+    assert.match(readFileSync(localFile(projB), 'utf8'), /\*\*Rule:\*\* A rule\./);
+    assert.match(globalText(), /\*\*Rule:\*\* A rule\./);
+  });
+
+  test('a lesson file with CRLF line endings keeps its rule and can be sharpened', () => {
+    rec(projA, '--rule', 'Original rule.');
+    writeFileSync(localFile(projA), readFileSync(localFile(projA), 'utf8').replace(/\n/g, '\r\n'));
+    assert.equal(rec(projA).code, 0, 'a CRLF file with a real rule is not "no rule"');
+    assert.equal(rec(projA, '--rule', 'Sharper rule.').code, 0);
+    assert.match(readFileSync(localFile(projA), 'utf8'), /\*\*Rule:\*\* Sharper rule\./);
+    assert.doesNotMatch(readFileSync(localFile(projA), 'utf8'), /Original rule/);
+  });
+
+  test('--rule on a file with no Rule line is refused, not silently dropped', () => {
+    rec(projA, '--rule', 'Original rule.');
+    writeFileSync(localFile(projA), readFileSync(localFile(projA), 'utf8').replace(/\*\*Rule:\*\* Original rule\.\n\n/, ''));
+    const before = readFileSync(localFile(projA), 'utf8');
+    const r = rec(projA, '--rule', 'New rule.');
+    assert.equal(r.code, 1);
+    assert.match(r.err, /no "\*\*Rule:\*\*" line/);
+    assert.equal(readFileSync(localFile(projA), 'utf8'), before, 'nothing was appended');
+  });
+
+  test('an empty or whitespace-only --rule is refused, on a new lesson and on an existing one', () => {
+    assert.equal(rec(projA, '--rule', '   ').code, 1);
+    rec(projA, '--rule', 'Real rule.');
+    assert.equal(rec(projA, '--rule', '  ').code, 1);
+    assert.match(readFileSync(localFile(projA), 'utf8'), /\*\*Rule:\*\* Real rule\./);
+  });
+
+  test('a rule that mentions the occurrences heading does not corrupt the global copy', () => {
+    rec(projA, '--rule', 'Never delete the ## Occurrences heading.');
+    rec(projB);
+    const g = globalText();
+    assert.match(g, /\*\*Rule:\*\* Never delete the ## Occurrences heading\.\n/);
+    assert.equal((g.match(/^## Occurrences$/gm) ?? []).length, 1);
+  });
+
+  test('--rule-file reads the rule from a file, so quotes and backticks need no shell escaping', () => {
+    const f = path.join(root, 'rule.txt');
+    writeFileSync(f, 'Never run `git stash` in a shared checkout; it\'s "global" state.\n');
+    const r = rec(projA, '--rule-file', f);
+    assert.equal(r.code, 0, r.err);
+    assert.match(readFileSync(localFile(projA), 'utf8'), /\*\*Rule:\*\* Never run `git stash` in a shared checkout; it's "global" state\./);
+  });
+
+  test('a flag with no value does not swallow the next flag', () => {
+    const r = vaultRun(['record', '--slug', slug, '--layer', 'l', '--body', bodyFile, '--rule', '--project-dir', projA]);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /--rule needs a value/);
+  });
+
+  test('a refused first record leaves nothing behind', () => {
+    const r = vaultRun(['record', '--slug', slug, '--layer', 'l', '--body', bodyFile, '--project-dir', projA]);
+    assert.equal(r.code, 1);
+    assert.ok(!existsSync(path.join(projA, '.claude/lessons')), 'no empty lessons directory');
+  });
+});
+
 describe('refusing empty provenance', () => {
   test('an empty occurrence body is rejected', () => {
     const empty = path.join(root, 'empty.md');
