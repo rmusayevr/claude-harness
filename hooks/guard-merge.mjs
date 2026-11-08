@@ -55,9 +55,9 @@ const unquote = (t) => t.replace(/^['"]|['"]$/g, '');
  * - Heredocs. A body fed to `cat` or `node` is data and is skipped; a body
  *   fed to a shell (`bash <<EOF`) is commands and is checked.
  * - Arithmetic. `<<` inside `$(( ))` is a shift, not a heredoc.
- * - Nested commands. The string after `bash -c`, `sh -c` or `eval` is a
- *   command too, so it is split and returned as well. So is the inside of
- *   `( )`, `{ }` and `$( )`.
+ * - Nested commands. The string after `bash -c`, `sh -c`, `su -c`, `eval` or
+ *   `ssh host` is a command too, so it is split and returned as well. So is
+ *   the inside of `( )`, `{ }` and `$( )`.
  * - Keywords. `then`, `do`, `else`, `!`, `time` and friends are dropped from
  *   the front of a segment, so `then rm -rf ~` is seen as `rm -rf ~`.
  *
@@ -99,8 +99,12 @@ function nestedCommands(seg) {
     return body;
   };
   const out = [];
-  const shell = /(?:^|[\s;&|(])(?:[\w./-]*\/)?(?:bash|sh|zsh|dash|ksh)\s+(?:-[a-zA-Z]+\s+)*?-[a-zA-Z]*c[a-zA-Z]*\s+(['"])/g;
-  for (const m of masked.matchAll(shell)) out.push(quoted(m.index + m[0].length - 1));
+  // Options may take a value (`-o pipefail`) before `-c`.
+  const shell = /(?:^|[\s;&|(])(?:[\w./-]*\/)?(?:bash|sh|zsh|dash|ksh)\s+(?:(?:[-+]o\s+\w+|-[a-zA-Z]+)\s+)*?-[a-zA-Z]*c[a-zA-Z]*\s+(['"])/g;
+  // `su [user] -c '...'` runs it as another user; `ssh host '...'` runs it remotely.
+  const su = /(?:^|[\s;&|(])su\b[^'"\n]*?\s-c\s+(['"])/g;
+  const ssh = /(?:^|[\s;&|(])ssh\s[^'"\n]*?(['"])/g;
+  for (const re of [shell, su, ssh]) for (const m of masked.matchAll(re)) out.push(quoted(m.index + m[0].length - 1));
   for (const m of masked.matchAll(/(?:^|[\s;&|(])eval\s+/g)) {
     const at = m.index + m[0].length;
     out.push(seg[at] === '"' || seg[at] === "'" ? quoted(at) : seg.slice(at));
@@ -192,6 +196,29 @@ function segments(command, depth = 0) {
   push();
   return out;
 }
+/**
+ * Every segment either splitter finds: the guards are never weaker than the
+ * plain split they started with.
+ *
+ * Two review rounds in sual-cavab (PRs #13 and #16) showed that each rule the
+ * shell-aware splitter added to remove a false positive also removed blocks
+ * the plain split caught by accident: heredocs piped to a shell, commands
+ * passed to `ssh` or `su -c`, quotes inside `$( )`. Patching case by case kept
+ * missing cases, so the guards check both and the most severe answer wins.
+ * The price is the plain split's old false positives, such as a `.env` path
+ * mentioned inside quotes; they were there before the shell-aware splitter.
+ */
+function plainSegments(command) {
+  return String(command ?? '')
+    .split(/&&|\|\||[;|&\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function allSegments(command) {
+  return [...new Set([...segments(command), ...plainSegments(command)])];
+}
+
 
 function tokens(segment) {
   const raw = segment.match(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/g) ?? [];
@@ -373,7 +400,7 @@ export function decide(payload, deps = {}) {
       cwd: deps.cwd ?? process.cwd(),
     };
 
-    for (const segment of segments(command)) {
+    for (const segment of allSegments(command)) {
       const t = tokens(segment);
       if (!t.length) continue;
       if (t[0] === 'cd' && t[1]) { ctx.cwd = resolve(ctx.cwd, t[1]); continue; }
