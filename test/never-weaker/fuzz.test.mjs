@@ -129,3 +129,43 @@ describe('fuzz: never weaker than the baseline release', () => {
     assert.deepEqual(out.slice(0, 10), [], `${out.length} weaker`);
   });
 });
+
+// A guard that outlives its hook timeout decides nothing, which is weaker
+// than a release that answered at once. sual-cavab PR #16, round 5: 400
+// chained `eval`s took 22 s against a 10 s limit. Every guard must answer
+// these within a second, and no weaker than the release.
+describe('pathological commands: answered fast, never weaker', () => {
+  const LIMIT_MS = 1000;
+  const shapes = {
+    'chained eval': (tail) => 'eval '.repeat(5000) + tail,
+    'eval between words': (tail) => 'x eval '.repeat(2000) + tail,
+    'nested bash -c': (tail) => 'bash -c '.repeat(2000) + `"${tail}"`,
+    'quoted evals': (tail) => `eval "${tail}" `.repeat(2000),
+    'deep subshells': (tail) => '('.repeat(5000) + tail + ')'.repeat(5000),
+    'arithmetic': (tail) => '$(( 1<<2 )) '.repeat(3000) + '; ' + tail,
+    'heredoc tags': (tail) => 'cat <<EOF\n'.repeat(2000) + 'EOF\n' + tail,
+    'ssh and su': (tail) => `ssh h su -c 'x' `.repeat(2000) + '; ' + tail,
+  };
+  const guards = {
+    'guard-risky-ops': ['true; rm -rf ~', undefined],
+    'guard-prod-ddl': ['true; python manage.py migrate', { DATABASE_URL: 'postgres://app@prod-db.acme.com:5432/app' }],
+    'guard-merge': ['true; git push origin staging', {
+      config: { base: 'staging', protected: ['main'] },
+      lookup: () => ({ baseRefName: 'staging', statusCheckRollup: [], number: 5 }),
+      cwd: '/work/sual-cavab', dir: '/work/sual-cavab',
+    }],
+  };
+  for (const [name, [tail, extra]] of Object.entries(guards)) {
+    for (const [shape, build] of Object.entries(shapes)) {
+      test(`${name}: ${shape}`, () => {
+        const command = build(tail);
+        const a = decision(G[name].then(bash(command), extra));
+        const t = performance.now();
+        const b = decision(G[name].now(bash(command), extra));
+        const ms = performance.now() - t;
+        assert.ok(ms < LIMIT_MS, `took ${Math.round(ms)} ms`);
+        assert.ok(rank[b] >= rank[a], `${a} -> ${b}`);
+      });
+    }
+  }
+});
