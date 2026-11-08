@@ -54,58 +54,95 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16)
 // The merge runs only when it provably cannot lose anything (see
 // `canMergeIncidents`); in every other case the file is "locally edited" and
 // skipped, exactly as before.
+//
+// Two independent checks, because a gate that lists what is safe leaks: the gate
+// below, and then a last check on the result (`losesNothing`) that every line
+// of the person's section is still there. Either one failing means "skipped".
 const INCIDENTS = /^## Incidents[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m;
 const INCIDENTS_HEAD = /^## Incidents[^\n]*\n/;
-const PLACEHOLDER_LINE = /^_None recorded yet\.[^\n]*_[ \t]*\r?$/m; // the whole line, nothing a person added to it
+const PLACEHOLDER = '_None recorded yet. `/promote-lesson` appends real occurrences here._';
 const hasIncidents = (text) => INCIDENTS.test(text);
 const stripIncidents = (text) => text.replace(INCIDENTS, '');
 /** The skill without its Incidents, line endings ignored: what an update compares. */
 const bodyOf = (text) => stripIncidents(text).replace(/\r\n/g, '\n');
+const lf = (t) => t.replace(/\r\n/g, '\n');
 const incidentBullets = (text) => {
   const m = text.match(INCIDENTS);
   if (!m) return [];
-  return m[0].replace(INCIDENTS_HEAD, '').split(/\r?\n(?=- )/).map((b) => b.trim()).filter((b) => b.startsWith('- '));
+  return lf(m[0]).replace(INCIDENTS_HEAD, '').split(/\n(?=- )/).map((b) => b.trim()).filter((b) => b.startsWith('- '));
 };
-const squash = (t) => t.replace(/\r/g, '').split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n\s*\n/g, '\n').trim();
-/** True when the section holds nothing but the exact placeholder line and "- " bullets. */
-function incidentsAreOnlyBullets(text) {
+/** The placeholder line upstream ships, if its section has one. */
+const placeholderLineOf = (text) => lf(text.match(INCIDENTS)?.[0] ?? '').split('\n').find((l) => /^_None recorded yet\./.test(l))?.trimEnd();
+const squash = (t) => lf(t).split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n\s*\n/g, '\n').trim();
+/**
+ * True when the section is the heading exactly as shipped, then nothing but a
+ * placeholder line exactly as shipped and "- " bullets.
+ */
+function incidentsAreOnlyBullets(text, placeholders) {
   const m = text.match(INCIDENTS);
-  if (!m) return false;
-  const body = m[0].replace(INCIDENTS_HEAD, '').replace(PLACEHOLDER_LINE, '');
+  if (!m || !/^## Incidents\r?\n/.test(m[0])) return false;
+  const body = lf(m[0]).replace(INCIDENTS_HEAD, '').split('\n').filter((l) => !placeholders.has(l.trimEnd())).join('\n');
   return squash(body) === squash(incidentBullets(text).join('\n'));
 }
 /**
- * Merge only when all of this holds, so that nothing a person wrote can be lost:
- * both files have an Incidents section (a person who deleted theirs, or a skill
- * that ships without one, is a local edit); the section holds only the exact
- * placeholder and bullets; and nothing outside it differs from what was installed.
+ * The gate. Merge only when both files have an Incidents section (a person who
+ * deleted theirs, or a skill that ships without one, is a local edit), the local
+ * one is only placeholder and bullets, and nothing outside it differs from what
+ * was installed. An install from before bodySha cannot say what the body was:
+ * `--merge-incidents` asserts it for files that have a manifest entry and a bullet.
  */
-function canMergeIncidents(local, upstream, known, mergeIncidents) {
-  if (!hasIncidents(local) || !hasIncidents(upstream) || !incidentsAreOnlyBullets(local)) return false;
+function canMergeIncidents(local, upstream, known, assertOnlyIncidents) {
+  const placeholders = new Set([PLACEHOLDER, placeholderLineOf(upstream)].filter(Boolean));
+  if (!hasIncidents(local) || !hasIncidents(upstream)) return false;
+  if (!incidentsAreOnlyBullets(local, placeholders) || !incidentsAreOnlyBullets(upstream, placeholders)) return false;
   if (known?.bodySha) return sha(bodyOf(local)) === known.bodySha;
-  // An install from before bodySha was recorded cannot say what the body was.
-  return bodyOf(local) === bodyOf(upstream) || mergeIncidents;
+  return bodyOf(local) === bodyOf(upstream) || Boolean(assertOnlyIncidents && known && incidentBullets(local).length);
 }
+/** True when `--merge-incidents` would be needed to update this file: it looks like incidents and nothing else. */
+const looksLikeOnlyIncidents = (local, upstream, known) =>
+  Boolean(known) && !known.bodySha && hasIncidents(local) && incidentBullets(local).length > 0 &&
+  incidentsAreOnlyBullets(local, new Set([PLACEHOLDER, placeholderLineOf(upstream)].filter(Boolean)));
 /**
  * Upstream's section, plus the bullets a person added. A bullet that was in
- * what we installed (`prev`) is upstream's, so upstream can reword or retract it.
+ * what we installed (`prev`) is upstream's, so upstream can reword or retract
+ * it; any other local bullet is the person's, even if upstream now says the
+ * same, and stays after upstream drops it. `recorded` is what to remember as
+ * upstream's own bullets.
  */
 function mergeIncidents(upstream, local, prev) {
   const m = upstream.match(INCIDENTS);
   const up = incidentBullets(upstream);
-  const own = incidentBullets(local).filter((b) => !prev.has(sha(b)) && !up.includes(b));
-  const bullets = [...up, ...own];
+  const own = incidentBullets(local).filter((b) => !prev.has(sha(b)));
+  const ownHashes = new Set(own.map(sha));
+  const bullets = [...up, ...own.filter((b) => !up.includes(b))];
   const head = m[0].match(INCIDENTS_HEAD)[0];
   const more = upstream.length > m.index + m[0].length; // another section follows: keep the blank line
-  const kept = m[0].slice(head.length).replace(/^\s+|\s+$/g, '');
+  const kept = lf(m[0]).slice(lf(head).length).replace(/^\s+|\s+$/g, '');
   const out = upstream.replace(INCIDENTS, () => head + '\n' + (bullets.length ? bullets.join('\n') : kept) + (more ? '\n\n' : '\n'));
-  return local.includes('\r\n') ? out.replace(/\r?\n/g, '\r\n') : out;
+  return {
+    text: local.includes('\r\n') ? out.replace(/\r?\n/g, '\r\n') : out,
+    recorded: up.map(sha).filter((h) => !ownHashes.has(h)),
+    // A person's bullet that reads exactly like upstream's makes the file equal
+    // upstream's: it must not look pristine, or a plain overwrite would drop it.
+    overlap: own.some((b) => up.includes(b)),
+  };
+}
+/**
+ * The last check: every line of the person's Incidents section is still in the
+ * merged file, unless it belonged to a bullet that was upstream's own or is the
+ * placeholder. Catches whatever the gate above missed.
+ */
+function losesNothing(local, merged, prev, placeholders) {
+  const lines = (t) => lf(t).split('\n').map((l) => l.trimEnd()).filter(Boolean);
+  const now = new Set(lines(merged));
+  const upstreamOwn = new Set(incidentBullets(local).filter((b) => prev.has(sha(b))).flatMap(lines));
+  return lines(local.match(INCIDENTS)?.[0] ?? '').every((l) => now.has(l) || upstreamOwn.has(l) || placeholders.has(l));
 }
 /** What we record for a skill so a later update can tell what changed: its body, and upstream's own bullets. */
-const bodyShaOf = (item, content) => {
+const bodyShaOf = (item, content, recorded) => {
   if (!item.to.endsWith('/SKILL.md')) return {};
   const text = content.toString('utf8');
-  const incidents = incidentBullets(text).map(sha);
+  const incidents = recorded ?? incidentBullets(text).map(sha);
   return { bodySha: sha(bodyOf(text)), ...(incidents.length ? { incidents } : {}) };
 };
 
@@ -556,18 +593,23 @@ async function cmdInstall(opts) {
         // Only the Incidents section differs from what we installed: merge it.
         const local = (await readFile(abs)).toString('utf8');
         const up = content.toString('utf8');
+        const prev = new Set(known?.incidents ?? []);
         if (canMergeIncidents(local, up, known, opts.mergeIncidents)) {
-          const merged = mergeIncidents(up, local, new Set(known?.incidents ?? []));
-          if (merged !== local) {
-            if (!dryRun) await writeFile(abs, merged);
-            wrote++;
+          const { text: merged, recorded, overlap } = mergeIncidents(up, local, prev);
+          const placeholders = new Set([PLACEHOLDER, placeholderLineOf(up)].filter(Boolean));
+          if (losesNothing(local, merged, prev, placeholders)) {
+            if (merged !== local) {
+              if (!dryRun) await writeFile(abs, merged);
+              wrote++;
+            }
+            files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: overlap ? sha(`own:${want}`) : want, ...bodyShaOf(item, content, recorded) });
+            continue;
           }
-          files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want, ...bodyShaOf(item, content) });
-          continue;
+        } else if (looksLikeOnlyIncidents(local, up, known)) {
+          // Recorded incidents and nothing else, but the install predates bodySha
+          // and the skill has changed, so we cannot tell: say how to proceed.
+          incidentSkips.push(item.to);
         }
-        // Looks like recorded incidents and nothing else, but the install predates
-        // bodySha and the skill has changed, so we cannot tell: say how to proceed.
-        if (!known?.bodySha && hasIncidents(local) && incidentBullets(local).length && incidentsAreOnlyBullets(local)) incidentSkips.push(item.to);
       }
       if (locallyEdited && !force) {
         skipped.push(item.to);

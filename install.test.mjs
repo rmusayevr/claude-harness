@@ -398,6 +398,80 @@ describe('local edits are not clobbered', () => {
       assert.doesNotMatch(read(H), /(?<!\r)\n/, 'every line ending is CRLF');
     });
 
+    describe('round 2', () => {
+      const WC = '.claude/skills/write-commit/SKILL.md';
+      const WQ = '.claude/skills/work-the-queue/SKILL.md';
+      const oldInstall = () => {
+        const m = manifest();
+        for (const f of m.files) {
+          delete f.bodySha;
+          delete f.incidents;
+        }
+        writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+      };
+
+      test('--merge-incidents never touches a skill the update did not list', () => {
+        local(H, (t) => t.replace(PH, '- OLD-1 cost a day.'));
+        local(WC, (t) => t.replace('# Write a commit', '# Write a commit\n\nMY TEAM RULE: always sign commits.'));
+        oldInstall();
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r1 = runS('install');
+        assert.match(r1.out, /handoff/);
+        assert.doesNotMatch(r1.out.split('--merge-incidents')[0].split('hold recorded incidents')[1] ?? '', /write-commit/);
+        runS('install', '--merge-incidents');
+        assert.match(read(WC), /MY TEAM RULE/);
+        assert.match(read(H), /Handoff v2/);
+        assert.match(read(H), /OLD-1/);
+      });
+
+      test('--merge-incidents never replaces a skill the manifest does not know', () => {
+        local(H, () => '---\nname: handoff\ndescription: ours\n---\n\n# Our procedure\n\n## Incidents\n\n- OURS cost a day.\n');
+        const m = manifest();
+        m.files = m.files.filter((f) => f.to !== H);
+        writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+        runS('install', '--merge-incidents');
+        assert.match(read(H), /Our procedure/);
+      });
+
+      test('text inside the placeholder’s italics is a local edit', () => {
+        local(H, (t) => t.replace(PH, PH.replace('here._', 'here. ASK DANA before any handoff._')));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /skipped/);
+        assert.match(read(H), /ASK DANA before any handoff/);
+      });
+
+      test('text added to the Incidents heading is a local edit', () => {
+        local(H, (t) => t.replace('## Incidents', '## Incidents (ask Dana before adding)').replace(PH, '- B1 cost a day.'));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /skipped/);
+        assert.match(read(H), /## Incidents \(ask Dana before adding\)/);
+      });
+
+      test('a bullet the person wrote survives upstream adopting and then retracting the same text', () => {
+        const X = '- **Proj (2026-11).** CS-64 shipped a marker nothing cleared.';
+        local(H, (t) => t.replace(PH, X));
+        upstream('handoff', (t) => t.replace(PH, X));
+        runS('install');
+        assert.equal(read(H).split(X).length - 1, 1, 'one copy, not two');
+        upstream('handoff', (t) => t.replace(X, PH));
+        runS('install');
+        assert.match(read(H), /CS-64 shipped a marker/);
+      });
+
+      test('a CRLF file with multi-line upstream bullets does not grow on every update', () => {
+        local(WQ, (t) => t.replace(/\n/g, '\r\n').trimEnd() + '\r\n- OWN one.\r\n');
+        const count = () => read(WQ).split('detached HEAD').length - 1;
+        const first = count();
+        runS('install');
+        runS('install');
+        runS('install');
+        assert.equal(count(), first);
+        assert.match(read(WQ), /OWN one/);
+      });
+    });
+
     test('when another section follows, its blank line is kept', () => {
       upstream('handoff', (t) => t + '\n## After\n\nText.\n');
       runS('install');
