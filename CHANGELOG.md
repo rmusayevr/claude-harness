@@ -29,6 +29,11 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- The guards are never weaker than the plain command split they started
+  with: they check both splits and the stricter answer wins. Review found the
+  shell-aware splitter alone could miss commands the plain split caught. The
+  price is the plain split's old false positives on quoted text, documented
+  in the tests.
 - The guards' command splitter was hardened after review found the
   quote-aware version could hide commands. Comments, nested shells, subshells,
   control flow and shell-fed heredocs are now inspected; see the guard tests.

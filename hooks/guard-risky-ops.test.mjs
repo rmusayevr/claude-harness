@@ -276,21 +276,29 @@ describe('compound commands: the most severe decision wins', () => {
   });
 });
 
-describe('quoted text and heredocs are text, not commands', () => {
-  test('the false positive: a .env path inside a quoted loop list', () => {
+// The price of "never weaker than the plain split" (sual-cavab PR #16, round
+// 2): text the shell-aware splitter reads as data is still checked by the
+// plain split, so these false positives are back. They existed before the
+// shell-aware splitter too. If one starts to hurt real work, fix it by
+// narrowing a RULE, never by dropping the plain split.
+describe('accepted false positives', () => {
+  test('a dangerous line inside quotes or a heredoc is still judged', () => {
     expect(
       bash('for c in "printf X | tee config/production.json .env" "rm -rf core & cp .env.example .env"; do echo "$c"; done'),
-      'allow',
+      'deny',
       'operators inside double quotes',
     );
-    expect(bash("git commit -m 'stop writing > .env from scripts; use tee'"), 'allow', 'operators inside single quotes');
+    expect(bash("cat > probe.mjs <<'EOF'\nconst c = 'tee .env';\nrm -rf /\nEOF\nnode probe.mjs"), 'deny', 'heredoc data');
+    expect(bash("cat <<'EOF'\nrm -rf ~\nEOF"), 'deny', 'heredoc to cat');
   });
 
-  test('a heredoc body is not split into commands', () => {
-    expect(bash("cat > probe.mjs <<'EOF'\nconst c = 'tee .env';\nrm -rf /\nEOF\nnode probe.mjs"), 'allow', 'quoted heredoc');
-    expect(bash('cat > notes.txt <<-EOF\n\tcp .env.example .env\n\tEOF\necho done'), 'allow', '<<- with tabs');
+  test('...but quoted text without a split point stays allowed', () => {
+    expect(bash("git commit -m 'stop writing > .env from scripts'"), 'allow', 'redirect inside quotes');
+    expect(bash("cat > notes.txt <<'EOF'\njust notes\nEOF"), 'allow', 'harmless heredoc');
   });
+});
 
+describe('quoted text and heredocs, as far as the plain split allows', () => {
   test('commands after the heredoc are still checked', () => {
     expect(bash("cat > a.txt <<'EOF'\nhello\nEOF\ncp .env.example .env"), 'deny', 'write after the heredoc');
   });
@@ -361,7 +369,6 @@ describe('commands a shell runs are seen, wherever they sit', () => {
       'echo a#b',
       'bash -c "echo hi"',
       `echo "bash -c 'rm -rf ~'"`,
-      "cat <<'EOF'\nrm -rf ~\nEOF",
       'echo $((1<<2))',
       'git log --format="%h #%s"',
       "python - <<'PY'\nimport os\nPY",
@@ -371,6 +378,37 @@ describe('commands a shell runs are seen, wherever they sit', () => {
     ]) {
       expect(bash(cmd), 'allow', cmd);
     }
+  });
+});
+
+// Round 2 of the sual-cavab PR #16 review: each of these was denied by the
+// plain split and allowed by the shell-aware splitter alone. The guards now
+// check both, so the shell-aware splitter can only add blocks.
+describe('never weaker than the plain split', () => {
+  test('heredocs that a shell runs, directly or remotely', () => {
+    for (const cmd of [
+      "cat <<'EOF' | bash\nrm -rf ~\nEOF",
+      "ssh build-box <<'EOF'\nrm -rf ~\nEOF",
+      "docker compose exec web sh <<'EOF'\ncp .env.example .env\nEOF",
+      "sudo bash <<'EOF'\nrm -rf ~\nEOF",
+    ]) {
+      expect(bash(cmd), 'deny', cmd);
+    }
+  });
+
+  test('quoted commands handed to another program to run', () => {
+    expect(bash("ssh build-box 'rm -rf ~'"), 'deny', 'ssh');
+    expect(bash("su -c 'rm -rf ~'"), 'deny', 'su -c');
+    expect(bash("bash -o pipefail -c 'rm -rf ~'"), 'deny', 'an option with a value before -c');
+  });
+
+  test('substitutions, and a quote inside a heredoc inside one', () => {
+    expect(bash('rm -rf $(cat list.txt)'), 'ask', 'rm on a substitution');
+    expect(
+      bash("gh pr create --title t --body \"$(cat <<'EOF'\nit's a body\nEOF\n)\" && git push --force origin main"),
+      'deny',
+      'force push after a heredoc inside $( )',
+    );
   });
 });
 
