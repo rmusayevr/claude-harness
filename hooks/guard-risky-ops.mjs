@@ -2,7 +2,7 @@
 /**
  * PreToolUse guard for mechanically-decidable risky operations.
  *
- * Contract (see ARCHITECTURE.md):
+ * Contract (see ARCHITECTURE.md in the harness repo):
  *   deny  - things that should never happen by accident. Requires CERTAINTY.
  *   ask   - things Claude should not self-authorize, but the operator may approve.
  *   null  - no decision; exit 0 silently and say nothing.

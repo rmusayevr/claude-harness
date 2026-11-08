@@ -16,7 +16,7 @@
  *
  *   Loop config present (`/work-the-queue`). Nobody is watching, and `ask` is a
  *   hard block or a silent allow depending on the permission mode (see
- *   ARCHITECTURE.md), so every rule is a `deny`:
+ *   ARCHITECTURE.md in the harness repo), so every rule is a `deny`:
  *     - the PR's base is a protected branch, or is not the configured `base`
  *     - checks are failing, or pending without `--auto`
  *     - `--admin`
