@@ -17,6 +17,7 @@
   other bugs.
 
 ### Changed
+- Wording from the first full project run: `review-for-data-loss` asks for one lock order tested with threads; `verify-for-real` runs through the proxy and migrates the dev database first; the CLAUDE.md block says a project's rules outrank a skill's defaults; `work-the-queue` says a Small issue needs no plan comment. The model-pin check ignores case.
 - **Model pins**: `fresh-eyes-reviewer` runs on Opus, and so do `risky-op`,
   `review-for-data-loss`, `audit-permissions`, `migrate-data` and
   `handle-secrets`. The rest inherit your session's model, so you can run the

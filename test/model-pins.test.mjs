@@ -33,7 +33,7 @@ test('inline skills pin opus or nothing', () => {
   const bad = [];
   for (const file of [...skillFiles(path.join(ROOT, 'skills')), ...skillFiles(path.join(ROOT, 'rules'))]) {
     const fm = frontmatter(file);
-    if (fm.model && fm.context !== 'fork' && !/^(opus|inherit)$/.test(fm.model)) bad.push(`${path.relative(ROOT, file)}: ${fm.model}`);
+    if (fm.model && fm.context !== 'fork' && !/^(opus|inherit)$/i.test(fm.model)) bad.push(`${path.relative(ROOT, file)}: ${fm.model}`);
   }
   assert.deepEqual(bad, []);
 });
