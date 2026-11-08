@@ -107,12 +107,23 @@ function nestedCommands(seg) {
   for (const re of [shell, su, ssh]) for (const m of masked.matchAll(re)) out.push(quoted(m.index + m[0].length - 1));
   for (const m of masked.matchAll(/(?:^|[\s;&|(])eval\s+/g)) {
     const at = m.index + m[0].length;
-    out.push(seg[at] === '"' || seg[at] === "'" ? quoted(at) : seg.slice(at));
+    if (seg[at] === '"' || seg[at] === "'") { out.push(quoted(at)); continue; }
+    // An unquoted eval runs the rest of the segment. Any later eval is inside
+    // that rest and is found when it is split, so stop here: pushing every
+    // suffix made `eval eval eval ...` grow as n^depth (sual-cavab PR #16,
+    // round 5: 400 evals took 22 s against a 10 s hook timeout).
+    out.push(seg.slice(at).replace(/^(?:eval\s+)+/, ''));
+    break;
   }
   return out;
 }
 
-function segments(command, depth = 0) {
+// Most segments the shell-aware split may produce. Past it, nested strings are
+// not expanded further. That is never weaker than the release: the plain split
+// is checked as well and does not expand them at all.
+const MAX_SEGMENTS = 2000;
+
+function segments(command, depth = 0, budget = { left: MAX_SEGMENTS }) {
   const s = String(command ?? '');
   const out = [];
   let cur = '';
@@ -124,7 +135,11 @@ function segments(command, depth = 0) {
     cur = '';
     if (!seg || seg === '}') return;
     out.push(seg);
-    if (depth < 3) for (const inner of nestedCommands(seg)) out.push(...segments(inner, depth + 1));
+    if (--budget.left <= 0 || depth >= 3) return;
+    for (const inner of nestedCommands(seg)) {
+      if (budget.left <= 0) break;
+      for (const x of segments(inner, depth + 1, budget)) out.push(x);
+    }
   };
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
