@@ -83,8 +83,14 @@ operator's own work; they do not get written unprompted.
 ```
 node ${CLAUDE_PLUGIN_ROOT}/scripts/vault.mjs record \
   --slug <slug> --title "<one line>" --layer <hook|claude-md|skill:<name>|vault> \
-  --body <file with the occurrence> --cost "<what it cost>" --project-dir <project>
+  --rule-file <file with the rule, one line> --body <file with the occurrence> \
+  --cost "<what it cost>" --project-dir <project>
 ```
+
+The rule goes in a file, like the body: a rule often quotes a command in
+backticks, which a shell would run. A second project may leave `--rule-file`
+out and starts from the rule already recorded; pass it to rewrite the rule so
+it covers both.
 
 Write the body as the incident, not as advice: *"CS-64 and CS-65 both shipped
 Redis markers nothing ever cleared; 3h incident each"* — not *"be careful with
