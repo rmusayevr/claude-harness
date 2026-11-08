@@ -29,6 +29,11 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- The plain split's fragments are now read exactly as the released guard read
+  them, so the guards cannot be weaker than the release by construction. A
+  fuzz test (8,000 generated commands) compares every guard with the release
+  on each run; it fails on each of the four earlier attempts. guard-merge
+  asks GitHub once per check and has a 20 s timeout.
 - "Never weaker" is now checked, not claimed: a test runs every command from
   the review rounds through the released guards and the current ones, and the
   current answer must be at least as strict. The plain split is now exactly
