@@ -1,7 +1,7 @@
 {
   "name": "harness",
   "description": "Portable agent harness: on-demand workflow skills, mechanical enforcement hooks, and a lesson vault that survives between projects.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "rmusayevr",
     "email": "rashadmusayev19@gmail.com"
