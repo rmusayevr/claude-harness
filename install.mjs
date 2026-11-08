@@ -8,6 +8,8 @@
  *   --target    project directory                    (default: cwd)
  *   --claude-md block | sidecar | skip               (default: block)
  *   --force     overwrite or delete locally-edited files
+ *   --merge-incidents  an install from before bodySha cannot tell an incident from an edit;
+ *               say that incidents are your only edit and the skill is updated around them
  *   --dry-run   print the plan, change nothing
  *
  * Design commitments:
@@ -49,36 +51,63 @@ const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16)
 // A skill's `## Incidents` section is where /promote-lesson records what a
 // project learned. Editing it makes the file "locally edited", which used to
 // freeze the whole skill against every later upstream change (sual-cavab, v1).
-// Incidents are merged instead of skipped: upstream text for everything else,
-// and every incident either side has.
+// The merge runs only when it provably cannot lose anything (see
+// `canMergeIncidents`); in every other case the file is "locally edited" and
+// skipped, exactly as before.
 const INCIDENTS = /^## Incidents[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m;
 const INCIDENTS_HEAD = /^## Incidents[^\n]*\n/;
+const PLACEHOLDER_LINE = /^_None recorded yet\.[^\n]*_[ \t]*\r?$/m; // the whole line, nothing a person added to it
+const hasIncidents = (text) => INCIDENTS.test(text);
 const stripIncidents = (text) => text.replace(INCIDENTS, '');
+/** The skill without its Incidents, line endings ignored: what an update compares. */
+const bodyOf = (text) => stripIncidents(text).replace(/\r\n/g, '\n');
 const incidentBullets = (text) => {
   const m = text.match(INCIDENTS);
   if (!m) return [];
   return m[0].replace(INCIDENTS_HEAD, '').split(/\r?\n(?=- )/).map((b) => b.trim()).filter((b) => b.startsWith('- '));
 };
-/** True when the section holds nothing but the placeholder and "- " bullets, so merging cannot drop anything else. */
+const squash = (t) => t.replace(/\r/g, '').split('\n').map((l) => l.trimEnd()).join('\n').replace(/\n\s*\n/g, '\n').trim();
+/** True when the section holds nothing but the exact placeholder line and "- " bullets. */
 function incidentsAreOnlyBullets(text) {
   const m = text.match(INCIDENTS);
-  if (!m) return true;
-  const squash = (t) => t.replace(/\r/g, '').replace(/\n\s*\n/g, '\n').trim();
-  const body = squash(m[0].replace(INCIDENTS_HEAD, '').replace(/^_None recorded yet[^\n]*$/m, ''));
-  return body === squash(incidentBullets(text).join('\n'));
+  if (!m) return false;
+  const body = m[0].replace(INCIDENTS_HEAD, '').replace(PLACEHOLDER_LINE, '');
+  return squash(body) === squash(incidentBullets(text).join('\n'));
 }
-function mergeIncidents(upstream, local) {
+/**
+ * Merge only when all of this holds, so that nothing a person wrote can be lost:
+ * both files have an Incidents section (a person who deleted theirs, or a skill
+ * that ships without one, is a local edit); the section holds only the exact
+ * placeholder and bullets; and nothing outside it differs from what was installed.
+ */
+function canMergeIncidents(local, upstream, known, mergeIncidents) {
+  if (!hasIncidents(local) || !hasIncidents(upstream) || !incidentsAreOnlyBullets(local)) return false;
+  if (known?.bodySha) return sha(bodyOf(local)) === known.bodySha;
+  // An install from before bodySha was recorded cannot say what the body was.
+  return bodyOf(local) === bodyOf(upstream) || mergeIncidents;
+}
+/**
+ * Upstream's section, plus the bullets a person added. A bullet that was in
+ * what we installed (`prev`) is upstream's, so upstream can reword or retract it.
+ */
+function mergeIncidents(upstream, local, prev) {
   const m = upstream.match(INCIDENTS);
-  if (!m) return upstream;
-  const bullets = incidentBullets(local);
-  for (const b of incidentBullets(upstream)) if (!bullets.includes(b)) bullets.push(b);
+  const up = incidentBullets(upstream);
+  const own = incidentBullets(local).filter((b) => !prev.has(sha(b)) && !up.includes(b));
+  const bullets = [...up, ...own];
   const head = m[0].match(INCIDENTS_HEAD)[0];
-  const body = bullets.length ? bullets.join('\n') + '\n' : m[0].slice(head.length).replace(/^\n+/, '');
-  return upstream.replace(INCIDENTS, () => head + '\n' + body);
+  const more = upstream.length > m.index + m[0].length; // another section follows: keep the blank line
+  const kept = m[0].slice(head.length).replace(/^\s+|\s+$/g, '');
+  const out = upstream.replace(INCIDENTS, () => head + '\n' + (bullets.length ? bullets.join('\n') : kept) + (more ? '\n\n' : '\n'));
+  return local.includes('\r\n') ? out.replace(/\r?\n/g, '\r\n') : out;
 }
-/** What we record for a skill so a later update can tell "only Incidents changed". */
-const bodyShaOf = (item, content) =>
-  item.to.endsWith('/SKILL.md') ? { bodySha: sha(stripIncidents(content.toString('utf8'))) } : {};
+/** What we record for a skill so a later update can tell what changed: its body, and upstream's own bullets. */
+const bodyShaOf = (item, content) => {
+  if (!item.to.endsWith('/SKILL.md')) return {};
+  const text = content.toString('utf8');
+  const incidents = incidentBullets(text).map(sha);
+  return { bodySha: sha(bodyOf(text)), ...(incidents.length ? { incidents } : {}) };
+};
 
 /**
  * Read UTF-8 text, stripping a byte-order mark.
@@ -131,6 +160,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (cmds.has(a)) opts.command = a;
     else if (a === '--force') opts.force = true;
+    else if (a === '--merge-incidents') opts.mergeIncidents = true;
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--profile') { opts.profile = argv[++i]; opts.profileExplicit = true; }
     else if (a === '--target') opts.target = path.resolve(argv[++i]);
@@ -510,6 +540,7 @@ async function cmdInstall(opts) {
   const priorByPath = new Map((prior?.files ?? []).map((f) => [f.to, f]));
   const files = [];
   const skipped = [];
+  const incidentSkips = [];
   let wrote = 0;
 
   for (const item of plan) {
@@ -525,11 +556,8 @@ async function cmdInstall(opts) {
         // Only the Incidents section differs from what we installed: merge it.
         const local = (await readFile(abs)).toString('utf8');
         const up = content.toString('utf8');
-        const onlyIncidents = known?.bodySha
-          ? sha(stripIncidents(local)) === known.bodySha
-          : stripIncidents(local) === stripIncidents(up);
-        if (onlyIncidents && incidentsAreOnlyBullets(local)) {
-          const merged = mergeIncidents(up, local);
+        if (canMergeIncidents(local, up, known, opts.mergeIncidents)) {
+          const merged = mergeIncidents(up, local, new Set(known?.incidents ?? []));
           if (merged !== local) {
             if (!dryRun) await writeFile(abs, merged);
             wrote++;
@@ -537,10 +565,16 @@ async function cmdInstall(opts) {
           files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want, ...bodyShaOf(item, content) });
           continue;
         }
+        // Looks like recorded incidents and nothing else, but the install predates
+        // bodySha and the skill has changed, so we cannot tell: say how to proceed.
+        if (!known?.bodySha && hasIncidents(local) && incidentBullets(local).length && incidentsAreOnlyBullets(local)) incidentSkips.push(item.to);
       }
       if (locallyEdited && !force) {
         skipped.push(item.to);
-        files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: known?.sha ?? onDisk, ...(known?.bodySha ? { bodySha: known.bodySha } : {}) });
+        files.push({
+          to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: known?.sha ?? onDisk,
+          ...(known?.bodySha ? { bodySha: known.bodySha } : {}), ...(known?.incidents ? { incidents: known.incidents } : {}),
+        });
         continue;
       }
       if (onDisk === want) {
@@ -594,6 +628,11 @@ async function cmdInstall(opts) {
   if (skipped.length) {
     console.log(`  ${C.yellow(`${skipped.length} skipped (locally edited, use --force to overwrite):`)}`);
     for (const s of skipped) console.log(`    ${s}`);
+  }
+  if (incidentSkips.length) {
+    console.log(`  ${C.yellow(`${incidentSkips.length} of those hold recorded incidents and may have no other edit:`)}`);
+    for (const s of incidentSkips) console.log(`    ${s}`);
+    console.log(`  If the incidents are your only edit, run again with --merge-incidents to take the new skill and keep them.`);
   }
   if (orphaned.length) {
     console.log(`  removed ${orphaned.length} file(s) not in this profile:`);
