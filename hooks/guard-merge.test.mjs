@@ -275,3 +275,22 @@ describe('process contract', () => {
     assert.equal(out, '');
   });
 });
+
+// sual-cavab PR #16, round 4: guard-merge walks two splits, so it could ask
+// GitHub twice and run past the hook's timeout, losing its decision.
+describe('one gh call per PR and directory', () => {
+  test('both walks share a single lookup', () => {
+    let calls = 0;
+    const lookup = () => { calls++; return { baseRefName: 'main', statusCheckRollup: [], number: 5 }; };
+    const got = decide(bash('git fetch && gh pr merge 5 --merge'), { config: LOOP, lookup, cwd: path.resolve('/repo') });
+    assert.equal(got.decision, 'deny');
+    assert.equal(calls, 1);
+  });
+
+  test('a failing lookup is not retried either', () => {
+    let calls = 0;
+    const lookup = () => { calls++; throw new Error('gh: timeout'); };
+    decide(bash('gh pr merge 5'), { config: LOOP, lookup, cwd: path.resolve('/repo') });
+    assert.equal(calls, 1);
+  });
+});

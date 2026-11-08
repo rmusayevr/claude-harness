@@ -28,12 +28,6 @@ const rank = { allow: 0, ask: 1, deny: 2 };
 const decision = (d) => d?.decision ?? 'allow';
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
 
-// Commands the baseline judged wrongly and the current guard fixes on
-// purpose. Each needs a reason; nothing else may get weaker.
-const INTENDED = new Map([
-  ['echo "a\\" > .env"', 'the > is inside the quotes: nothing is written'],
-  ['echo hi \\> .env', 'an escaped > is a literal character, not a redirect'],
-]);
 
 // Loaded once, up front: every guard as it is now and as the baseline shipped it.
 const GUARDS = {};
@@ -47,10 +41,10 @@ const pair = (name) => GUARDS[name];
 
 function weaker(name, nowDecide, thenDecide, extra) {
   const out = [];
-  for (const command of [...corpus.commands, ...INTENDED.keys()]) {
+  for (const command of corpus.commands) {
     const a = decision(thenDecide(bash(command), extra));
     const b = decision(nowDecide(bash(command), extra));
-    if (rank[b] < rank[a] && !INTENDED.has(command)) out.push(`${name}: ${a} -> ${b}  ${JSON.stringify(command)}`);
+    if (rank[b] < rank[a]) out.push(`${name}: ${a} -> ${b}  ${JSON.stringify(command)}`);
   }
   return out;
 }
@@ -94,11 +88,5 @@ describe('never weaker than the baseline release', () => {
     assert.deepEqual(out, []);
   });
 
-  test('the intended fixes really are fixes, and are the only exceptions', () => {
-    const { now, then } = pair('guard-risky-ops');
-    for (const [command, why] of INTENDED) {
-      assert.equal(decision(then(bash(command))), 'deny', `baseline denied it: ${why}`);
-      assert.equal(decision(now(bash(command))), 'allow', `current allows it: ${why}`);
-    }
-  });
+
 });

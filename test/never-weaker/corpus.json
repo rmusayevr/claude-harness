@@ -97,7 +97,17 @@
     "for f in *.md; do echo \"$f\"; done",
     "if [ -f x ]; then echo yes; fi",
     "rm -rf node_modules && npm ci",
-    "bash <<'EOF'\nrm -rf ~\nEOF"
+    "bash <<'EOF'\nrm -rf ~\nEOF",
+    "cat <<'EOF' | bash\necho \"a;b\\\"c\" > .env\nEOF",
+    "cat <<'EOF' | bash\necho \"a|b\\\"c\" > id_rsa\nEOF",
+    "cat <<'EOF' | bash\necho \"a&&b\\\" x\" > config/production.json\nEOF",
+    "(( n = 1 << k ))\necho \"a;b\\\"c\" > .env",
+    "cat <<'EOF' | bash\nprintf \"%s;%s\\\"\\n\" a b > .env\nEOF",
+    "echo \\> .env",
+    "echo \"a\\\" > .env\"",
+    "ssh host <<EOF\necho \"a;b\\\"c\" > .env\nEOF",
+    "docker compose exec web sh <<EOF\necho \"a;b\\\"c\" > .env\nEOF",
+    "if true; then bash <<EOF\necho \"a;b\\\"c\" > .env\nEOF\nfi"
   ],
   "mergeCommands": [
     "(cd ~ && ls) && gh pr merge 5",

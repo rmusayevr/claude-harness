@@ -204,9 +204,6 @@ function plainSegments(command) {
     .filter(Boolean);
 }
 
-function allSegments(command) {
-  return [...new Set([...segments(command), ...plainSegments(command)])];
-}
 
 
 /** Tokenize a segment, dropping a leading `sudo` / env-var prefix. */
@@ -388,19 +385,24 @@ function checkDeploy(t, segment) {
  * mentions a path and does not write one. Backslash escapes count too: a
  * `\"` inside double quotes does not close them, or a `=>` in quoted
  * JavaScript reads as a redirect (replaying real commands, 2026-11-08).
+ *
+ * `escapes: false` is the released guard's naive reading, used for the
+ * plain split's fragments. Those can start mid-quote; reading `\"` as an
+ * escape there kept a quote open and hid a real `> .env` that the released
+ * guard caught (sual-cavab PR #16, round 4).
  */
-function redirectTargets(segment) {
+function redirectTargets(segment, escapes = true) {
   const s = String(segment);
   const out = [];
   let quote = null;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
-      if (c === '\\' && quote === '"') { i++; continue; }
+      if (escapes && c === '\\' && quote === '"') { i++; continue; }
       if (c === quote) quote = null;
       continue;
     }
-    if (c === '\\') { i++; continue; }
+    if (escapes && c === '\\') { i++; continue; }
     if (c === '"' || c === "'") { quote = c; continue; }
     if (c !== '>') continue;
 
@@ -427,8 +429,8 @@ function redirectTargets(segment) {
 /** `-i`, `-i.bak`, `-pi`, `--in-place` — an editor rewriting the file in place. */
 const IN_PLACE = (x) => x === '--in-place' || /^-{1,2}[a-zA-Z]*i[\w.]*$/.test(x);
 
-function writeTargets(t, segment) {
-  const out = redirectTargets(segment);
+function writeTargets(t, segment, escapes = true) {
+  const out = redirectTargets(segment, escapes);
   const cmd = base(t[0] ?? '');
   const rest = t.slice(1);
   const positional = rest.filter((x) => !x.startsWith('-'));
@@ -459,11 +461,11 @@ function fileExists(p) {
  * wrong the answer is "does not exist", which under-asks rather than
  * interrupting — the same direction every other undecidable case takes here.
  */
-function checkBashWrite(t, segment) {
+function checkBashWrite(t, segment, escapes = true) {
   // Every target, deny first: `tee config/production.json .env` asked about
   // the config file and never looked at `.env` (sual-cavab PR #13 review).
   let found = null;
-  for (const target of writeTargets(t, segment)) {
+  for (const target of writeTargets(t, segment, escapes)) {
     const hit = checkWrite(target, fileExists(target));
     if (!hit) continue;
     if (!found || (hit.decision === 'deny' && found.decision !== 'deny')) found = hit;
@@ -487,13 +489,18 @@ function checkBashWrite(t, segment) {
  */
 const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkBashWrite];
 
+/**
+ * The shell-aware segments are read with escapes; the plain split's are read
+ * exactly as the released guard read them. So the plain path IS the released
+ * guard, and this one cannot be weaker than it, only stricter.
+ */
 function checkBash(command) {
   let ask = null;
-  for (const segment of allSegments(command)) {
+  for (const [split, escapes] of [[segments(command), true], [plainSegments(command), false]]) for (const segment of split) {
     const t = tokens(segment);
     if (t.length === 0) continue;
     for (const rule of RULES) {
-      const hit = rule(t, segment);
+      const hit = rule(t, segment, escapes);
       if (!hit) continue;
       if (hit.decision === 'deny') return hit;
       ask ??= hit;

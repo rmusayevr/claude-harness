@@ -393,7 +393,19 @@ export function decide(payload, deps = {}) {
 
     const dir = deps.dir ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
     const config = deps.config === undefined ? loadConfig(dir) : deps.config;
-    const lookup = deps.lookup ?? ghLookup;
+    // Both walks usually ask about the same PR from the same directory; one gh
+    // call serves both, so the check stays inside the hook's timeout.
+    const raw = deps.lookup ?? ghLookup;
+    const memo = new Map();
+    const lookup = (args, cwd) => {
+      const key = JSON.stringify([args, cwd]);
+      if (!memo.has(key)) {
+        try { memo.set(key, { ok: raw(args, cwd) }); } catch (error) { memo.set(key, { error }); }
+      }
+      const hit = memo.get(key);
+      if (hit.error) throw hit.error;
+      return hit.ok;
+    };
 
     // Each split is walked on its own, with its own working directory and
     // every `cd` in order. One merged, de-duplicated list applied the `cd`s
