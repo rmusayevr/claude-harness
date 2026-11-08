@@ -57,7 +57,7 @@ you ruled out — made routine instead of occasional.
 - A repo you will not touch again next month
 - Prototypes where being wrong costs nothing and speed is the entire point
 
-The listing cost (~2,700 tokens per session) is real. On a five-file experiment
+The listing cost (~2,400 tokens per session) is real. On a five-file experiment
 it buys nothing.
 
 ---
@@ -200,14 +200,14 @@ almost nothing beyond `review-a-dependency` and `write-an-adr`.
 ### What it does cover
 
 Everything after that. Here is the full arc with the skills that fire at each
-stage.
+stage. `*` means you type it (`/harness:<name>`); the rest fire on their own.
 
 #### 1. Decisions before code
 
 | Moment | Skill |
 |---|---|
 | Choosing a library, framework, or base image | `review-a-dependency` |
-| A choice that will be expensive to reverse | `write-an-adr` |
+| A choice that will be expensive to reverse | `write-an-adr`* |
 | Before writing a helper that may already exist | `find-prior-art` |
 
 #### 2. Building
@@ -255,7 +255,7 @@ stage.
 
 | Moment | Skill |
 |---|---|
-| Canary, percentage, or staged rollout | `manage-a-rollout` |
+| Canary, percentage, or staged rollout | `manage-a-rollout`* |
 | The moment the deploy finishes | `smoke-test-a-deploy` |
 | An irreversible or externally visible step | `risky-op` |
 
@@ -264,11 +264,11 @@ stage.
 | Moment | Skill |
 |---|---|
 | Adding a cron or background task | `schedule-a-job` |
-| Documenting a recovery for on-call | `write-a-runbook` |
+| Documenting a recovery for on-call | `write-a-runbook`* |
 | Something is broken **right now** | `mitigate-first` |
 | A third party is down | `survive-a-dependency-outage` |
 | Investigating on a live system | `debug-in-production` |
-| After it is over | `incident-writeup` |
+| After it is over | `incident-writeup`* |
 
 #### 8. Debugging, throughout
 
@@ -350,16 +350,16 @@ All 52 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 **Navigation (5)** — `land-in-a-new-repo` · `map-subsystem`* · `find-prior-art` ·
 `git-archaeology` · `locate-a-behavior`
 
-**Written artifacts (6)** — `write-commit` · `write-an-adr` · `handoff` ·
-`incident-writeup` · `write-a-runbook` · `write-a-bug-report`
+**Written artifacts (6)** — `write-commit` · `write-an-adr`* · `handoff` ·
+`incident-writeup`* · `write-a-runbook`* · `write-a-bug-report`
 
 **Operational risk (6)** — `risky-op` · `handle-secrets` · `mitigate-first` ·
-`manage-a-rollout` · `schedule-a-job` · `survive-a-dependency-outage`
+`manage-a-rollout`* · `schedule-a-job` · `survive-a-dependency-outage`
 
 **Delivery loop (2)** — `work-the-queue`* · `triage-review`
 
 **Harness (4)** — `promote-lesson` · `recall-lessons` · `harness-audit`* ·
-`harness-status`
+`harness-status`*
 
 **Stack packs (2, installer only)** — `stateful-markers` (backend) ·
 `loading-and-empty` (frontend)
@@ -515,8 +515,8 @@ npm run listing-cost
 ```
 
 ```
-10939 chars across 51 billed skills (54 on disk)
-~2735 tokens, every session and every subagent
+9678 chars across 46 billed skills (54 on disk)
+~2420 tokens, every session and every subagent
 ```
 
 This is the number you pay whether or not you use a single skill — and it is
@@ -601,7 +601,7 @@ Same routing check, plus:
 
 - **Mechanical enforcement.** The hooks are not suggestions. A `.env` write is
   denied whether or not Claude "remembers" the rule.
-- **Cheap coverage.** 50 procedures cost ~2,700 tokens per session; the bodies
+- **Cheap coverage.** 46 automatic procedures cost ~2,400 tokens per session; the bodies
   cost nothing until used.
 - **Compounding.** Lessons route to the layer that fires in time, and graduate
   across projects on evidence rather than a hunch.
@@ -614,7 +614,7 @@ Same routing check, plus:
 
 ### What it costs, and where it is weak
 
-- **~2,700 tokens every session**, multiplied inside every subagent. Not free.
+- **~2,400 tokens every session**, multiplied inside every subagent. Not free.
 - **Almost no skill has an incident recorded yet.** 52 of 54 ship as *reasoning*, not
   as earned history. That is honest, but it means the provenance discipline is
   currently aspirational — it becomes real as you use it.
@@ -668,9 +668,15 @@ harnesses into unreadable ones:
 | `/harness:recall-lessons` | Check for prior lessons before starting |
 | `/harness:harness-status` | Is the install healthy |
 | `/harness:harness-audit` | Turn the harness on itself |
+| `/harness:write-an-adr` | Record a decision that will be expensive to reverse |
+| `/harness:manage-a-rollout` | Plan a staged release with abort criteria first |
+| `/harness:write-a-runbook` | Document a recovery for on-call |
+| `/harness:incident-writeup` | Write up an outage or near miss |
 | `/harness:work-the-queue` | Run the GitHub issue loop until it needs you |
 
-Everything else fires on its own when the task matches.
+Everything else fires on its own when the task matches. The four document
+skills above are slash-only so they cost nothing per session; you decide when a
+document is worth writing.
 
 ### Installer
 

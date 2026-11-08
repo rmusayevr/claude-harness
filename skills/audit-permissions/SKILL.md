@@ -1,6 +1,6 @@
 ---
 name: audit-permissions
-description: Verify that authorization is enforced where the data is reached rather than where the route is declared, and that the default is denial. Use when adding endpoints, queries, or anything that returns records belonging to someone.
+description: Check that authorization is enforced where data is reached, not where the route is declared, and that the default is deny. Use when adding endpoints or queries that return someone's records.
 ---
 
 # Audit permissions

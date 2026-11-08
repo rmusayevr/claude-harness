@@ -2,6 +2,7 @@
 name: harness-status
 description: Check that the harness installed in this project is complete, current, and actually wired up, and report what drifted. Use when skills or hooks seem missing, or after pulling changes.
 allowed-tools: Bash(node ${CLAUDE_PLUGIN_ROOT}/install.mjs *), Bash(node "${CLAUDE_PLUGIN_ROOT}/install.mjs" *), Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/audit.mjs *), Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/audit.mjs" *)
+disable-model-invocation: true
 ---
 
 # Harness status

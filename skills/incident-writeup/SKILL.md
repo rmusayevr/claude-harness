@@ -1,6 +1,7 @@
 ---
 name: incident-writeup
 description: Write up an outage as a timeline of what was known versus believed at each moment, producing changes that address why it took so long to see. Use after any user-visible failure or near miss.
+disable-model-invocation: true
 ---
 
 # Incident writeup

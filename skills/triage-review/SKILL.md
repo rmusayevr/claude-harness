@@ -1,6 +1,6 @@
 ---
 name: triage-review
-description: Label every finding of a code review on a GitHub PR as blocker, decision, settled or nit, fix the blockers, and post the PR's status line (ready or not). Use when review output comes back, or when asked whether a PR is done or ready to merge.
+description: Label each code-review finding on a GitHub PR as blocker, decision, settled or nit, fix the blockers, and post whether the PR is ready. Use when review findings come back or someone asks if a PR is ready.
 ---
 
 # Triage a review and say whether the PR is done

@@ -1,6 +1,6 @@
 ---
 name: split-a-big-change
-description: Break work that is genuinely large into independently reviewable, independently revertible pieces that each land on their own. Use when a change is too big to review in one sitting but cannot be made smaller by scoping.
+description: Break genuinely large work into pieces that can each be reviewed, reverted and landed on their own. Use when a change is too big to review in one sitting and cannot be scoped smaller.
 ---
 
 # Split a big change

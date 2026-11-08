@@ -1,6 +1,6 @@
 ---
 name: refactor-safely
-description: Pin existing behavior with characterization tests before restructuring code, so that any behavior change surfaces as a test failure rather than a later incident. Use before rewriting, extracting, or reorganizing working code.
+description: Pin current behavior with characterization tests before restructuring, so any behavior change shows up as a failing test. Use before rewriting, extracting or reorganizing working code.
 ---
 
 # Refactor safely
