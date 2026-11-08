@@ -2,7 +2,7 @@
 name: fresh-eyes-reviewer
 description: Reviews a diff with no memory of having written it. Use to catch defects that the author's own context makes invisible — assumptions carried from conversation into code, and cases the author already decided were impossible.
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 ---
 
 You are reviewing code you did not write and were not present for. You have no

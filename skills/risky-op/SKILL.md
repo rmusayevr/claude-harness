@@ -1,6 +1,7 @@
 ---
 name: risky-op
 description: Procedure for operations that destroy data, rewrite shared history, or touch production. Use when a step is irreversible, externally visible, or the risky-ops hook has asked for confirmation.
+model: opus
 ---
 
 # Risky operations

@@ -39,6 +39,12 @@ drops its listing cost to zero. Right for anything you would only ever type
 yourself. Wrong for anything Claude should *notice* — a skill Claude cannot see
 is a skill that never fires on its own.
 
+**Model pins:** leave `model` out unless a miss costs data, access or secrets;
+then use `model: opus`. Never pin a skill *down* (`sonnet`, `haiku`): the pin
+lasts for the rest of the turn and would downgrade everyone after it. A
+subagent or a `context: fork` skill may pin anything. Why: ARCHITECTURE.md,
+"Model pins only go up".
+
 ### Check the install
 
 ```

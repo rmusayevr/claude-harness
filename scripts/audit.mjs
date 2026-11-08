@@ -83,6 +83,8 @@ for (const [dir, group] of [['skills', 'core'], ['rules', 'pack']]) {
       name: fm.name ?? path.basename(path.dirname(f)),
       description: fm.description ?? '',
       userOnly: /^(true|yes|on|1)$/i.test(fm['disable-model-invocation'] ?? ''),
+      model: fm.model ?? '',
+      forked: fm.context === 'fork',
       lines: text.split(/\r?\n/).length,
       // Anchored to line start: promote-lesson MENTIONS '## Incidents' mid-sentence
       // while routing a lesson, and an unanchored match counted that as provenance.
@@ -123,6 +125,14 @@ for (const s of skills.filter((s) => !s.description))
 for (const s of skills.filter((s) => s.lines > BODY_LIMIT))
   add('medium', 'fat-body', `${s.name} body is ${s.lines} lines (limit ${BODY_LIMIT})`,
     'A body stays resident once loaded. Move lookup material to a sibling file the body names.');
+
+// 4b. An inline skill's model pin lasts for the rest of the turn, and an
+//     unattended loop is often one turn, so anything but an upgrade to opus
+//     downgrades whoever runs the harness on a stronger model. A forked skill's
+//     pin stays inside its subagent. See ARCHITECTURE.md, "Model pins".
+for (const s of skills.filter((s) => s.model && !s.forked && !/^(opus|inherit)$/.test(s.model)))
+  add('high', 'model-downgrade', `${s.name} pins model "${s.model}" inline`,
+    'Inline pins outlast the skill. Use opus, inherit, or context: fork.');
 
 // 5. Hooks with no test.
 const hookDir = path.join(ROOT, 'hooks');

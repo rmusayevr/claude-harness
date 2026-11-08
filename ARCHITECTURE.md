@@ -141,6 +141,29 @@ A hook that throws, times out, or receives unparseable input **exits 0 and allow
 call**. A wedged session is worse than a missed check. This is not negotiable and every
 hook test asserts it.
 
+### Model pins only go up
+
+A skill's `model` field switches the model for **the rest of the turn**, not just
+while the skill runs, and an unattended loop is often a single turn. A `sonnet` pin
+on a skill would therefore quietly downgrade someone who runs the harness on Opus,
+for every issue after it. So:
+
+- **Inline skills pin `opus` or nothing.** Only where a miss costs data, access or
+  secrets: `risky-op`, `review-for-data-loss`, `audit-permissions`, `migrate-data`,
+  `handle-secrets`. A Sonnet session that reaches one of them stays on Opus until
+  the next prompt; that is the intended trade.
+- **Subagents may pin anything,** because the pin stays inside them.
+  `fresh-eyes-reviewer` is pinned to `opus`. A review is only as good as its
+  reviewer. claude-harness PRs #6–#8 merged on green CI and a later review found
+  the guards had got weaker, and sual-cavab PR #16 took five review rounds to
+  find shell edge cases.
+- **Aliases, never full IDs.** `opus` resolves per provider; a pinned ID breaks on
+  a provider that lacks it. If an organisation's allowlist excludes the model, the
+  skill keeps the session model and the subagent falls back. Nothing fails.
+
+`npm run audit` flags any inline skill pinned to something other than `opus`, and
+`test/model-pins.test.mjs` fails CI on one.
+
 ## Provenance rule
 
 Every rule in this harness carries the incident that bought it.

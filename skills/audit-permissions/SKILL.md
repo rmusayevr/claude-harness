@@ -1,6 +1,7 @@
 ---
 name: audit-permissions
 description: Check that authorization is enforced where data is reached, not where the route is declared, and that the default is deny. Use when adding endpoints or queries that return someone's records.
+model: opus
 ---
 
 # Audit permissions

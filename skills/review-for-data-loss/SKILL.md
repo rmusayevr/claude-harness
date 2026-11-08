@@ -1,6 +1,7 @@
 ---
 name: review-for-data-loss
 description: Check a change specifically for ways it can destroy or corrupt data that cannot be reconstructed. Use before merging anything that writes, deletes, transforms, or expires stored records.
+model: opus
 ---
 
 # Review for data loss
