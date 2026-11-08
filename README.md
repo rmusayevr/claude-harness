@@ -9,6 +9,13 @@ changes with fresh eyes, and refuses dangerous commands.
 You don't learn anything new to use it. Install it and keep talking to Claude
 the way you already do. New to it? Type `/harness:start`.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
+  <img alt="Your request reaches a Claude session that always holds the working rules and a one-line index of checklists. A matching checklist loads, Claude calls a tool, and three safety guards decide to allow, ask or block before it runs. A separate reviewer sees only the diff, and mistakes become lessons." src="docs/how-it-works.svg">
+</picture>
+
+**[Try it interactively →](https://rmusayevr.github.io/claude-harness/)** Pick something you might say and step through what happens.
+
 ## Install
 
 In Claude Code:
@@ -125,7 +132,8 @@ in `<project>/.claude/lessons/`. One recorded in two or more projects moves to
 | `hooks/` | The guards, `hooks.json`, and a `.test.mjs` beside each guard |
 | `templates/` | The `CLAUDE.md` block merged on install |
 | `install.mjs` | The installer |
-| `scripts/` | Lesson vault, self-audit, listing-cost report |
+| `scripts/` | Lesson vault, self-audit, listing-cost report, diagram builder |
+| `docs/` | The interactive diagram (GitHub Pages) and the README's static copy |
 
 ### Tests and audit
 

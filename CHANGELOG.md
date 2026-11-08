@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- **How it works diagram**: an interactive walkthrough at
+  https://rmusayevr.github.io/claude-harness/ (from `docs/index.html`), and a
+  static light/dark copy at the top of the README. `npm run diagram`
+  regenerates the copy; CI fails if it is out of date.
 - **`/harness:start`**: asks what you're doing and shows what to say, what will
   happen, and what it will refuse. Slash-only, so it costs nothing per session.
 - `CONTRIBUTING.md`, and issue forms for "a guard blocked normal work" and
