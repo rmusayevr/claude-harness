@@ -50,6 +50,11 @@ These run on every command, whether Claude remembers the rules or not.
 - **Asks you first:** `git reset --hard`, deleting non-build folders, deploys,
   database migrations aimed at production, merging a PR with failing checks.
 
+They're a safety net, not a wall. A guard reads the command as written, so
+something indirect, like a path in a variable or a script that does the work,
+can get past it. They catch accidents, not someone set on getting around them.
+Keep branch protection and file permissions too.
+
 If a guard blocks something it shouldn't, that's a bug. Please
 [open an issue](https://github.com/rmusayevr/claude-harness/issues).
 

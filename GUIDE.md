@@ -439,6 +439,14 @@ cut or make slash-only. Add `.claude/harness-usage.log` to `.gitignore`.
 - **All three under-block deliberately.** `rm -rf node_modules` never prompts. A
   migration with no resolvable target never prompts. A guard that interrupts
   ordinary work gets switched off within a week, and then it protects nothing.
+- **They are a safety net, not a security boundary.** A guard reads the command
+  as written. A path held in a variable (`f=.env; echo x > $f`), a command
+  built at runtime, or a script that does the work itself (`python write.py`)
+  is not seen. Shell writes through `>`, `tee`, `sed -i`, `cp` and `mv` are
+  covered; anything indirect is not. They stop accidents and the obvious
+  mistake. They do not stop a determined attempt, and they are no substitute
+  for file permissions, branch protection or secrets that never reach the
+  machine.
 
 If a guard annoys you, **that is a bug** — say so and it gets narrowed. Do not
 disable it.
