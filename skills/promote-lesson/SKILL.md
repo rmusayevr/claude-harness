@@ -82,7 +82,7 @@ operator's own work; they do not get written unprompted.
 
 ```
 node ${CLAUDE_PLUGIN_ROOT}/scripts/vault.mjs record \
-  --slug <slug> --title "<one line>" --layer <hook|claude-md|skill:<name>|vault> \
+  --slug <slug> --title "<one line>" --rule "<what to do, or never do>" --layer <hook|claude-md|skill:<name>|vault> \
   --body <file with the occurrence> --cost "<what it cost>" --project-dir <project>
 ```
 

@@ -3,7 +3,7 @@
  * The lesson vault. Plain Markdown on local disk. No telemetry, no network.
  *
  *   node vault.mjs check   --slug <s> [--project-dir <d>]
- *   node vault.mjs record  --slug <s> --title <t> --layer <l> --body <file>
+ *   node vault.mjs record  --slug <s> --title <t> --layer <l> --rule "<one line>" --body <file>
  *                          [--project-dir <d>] [--project <name>] [--cost <s>]
  *   node vault.mjs list    [--project-dir <d>]
  *   node vault.mjs show    --slug <s> [--project-dir <d>]
@@ -42,6 +42,7 @@ function parseArgs(argv) {
     else if (a === '--title') o.title = argv[++i];
     else if (a === '--layer') o.layer = argv[++i];
     else if (a === '--body') o.body = argv[++i];
+    else if (a === '--rule') o.rule = argv[++i];
     else if (a === '--cost') o.cost = argv[++i];
     else if (a === '--project') o.project = argv[++i];
     else if (a === '--project-dir') o.projectDir = path.resolve(argv[++i]);
@@ -108,7 +109,16 @@ async function writeIndex(rows) {
 const localPath = (dir, slug) => path.join(dir, '.claude', 'lessons', `${slug}.md`);
 const globalPath = (slug) => path.join(VAULT, `${slug}.md`);
 
-function newLesson({ slug, title, layer }) {
+const RULE_BLOCK = /^\*\*Rule:\*\*[\s\S]*?(?=\n\n## Occurrences)/m;
+const RULE_PLACEHOLDER = '_(sharpen this as occurrences accumulate';
+const hasRealRule = (head) => {
+  const m = head.match(RULE_BLOCK);
+  return Boolean(m) && !m[0].includes(RULE_PLACEHOLDER);
+};
+/** Replace the head's rule; a lesson graduates with the rule, not with a placeholder. */
+const withRule = (text, rule) => text.replace(RULE_BLOCK, () => `**Rule:** ${rule.trim().replace(/\s*\n\s*/g, ' ')}`);
+
+function newLesson({ slug, title, layer, rule }) {
   return `---
 slug: ${slug}
 layer: ${layer}
@@ -117,8 +127,7 @@ status: local
 
 # ${title}
 
-**Rule:** _(sharpen this as occurrences accumulate — do not add a second bullet
-for the same failure; rewrite this line so it covers both.)_
+**Rule:** ${rule.trim().replace(/\s*\n\s*/g, ' ')}
 
 ## Occurrences
 
@@ -155,7 +164,8 @@ async function mergeForGlobal(row, fallbackText) {
     const p = localPath(dir, row.slug);
     if (!existsSync(p)) continue;
     const parsed = parseLesson(await readFile(p, 'utf8'));
-    head ??= parsed.head;
+    // The first project's head, unless a later one has a real rule and it does not.
+    if (head === null || (!hasRealRule(head) && hasRealRule(parsed.head))) head = parsed.head;
     for (const occ of parsed.occurrences) {
       if (seen.has(occ)) continue;
       seen.add(occ);
@@ -244,7 +254,15 @@ async function cmdRecord(o) {
   // Per-project lesson file: create, or append the occurrence.
   const lp = localPath(o.projectDir, o.slug);
   await mkdir(path.dirname(lp), { recursive: true });
-  let text = existsSync(lp) ? await readFile(lp, 'utf8') : newLesson({ slug: o.slug, title: o.title || o.slug, layer: row.layer });
+  let text;
+  if (existsSync(lp)) {
+    text = await readFile(lp, 'utf8');
+    if (o.rule) text = withRule(text, o.rule); // sharpening, as the NOTE below asks
+    else if (!hasRealRule(text)) die('this lesson has no rule yet: record needs --rule "<one line>"');
+  } else {
+    if (!o.rule?.trim()) die('record needs --rule "<one line: what to do or never do>"; the incident goes in --body');
+    text = newLesson({ slug: o.slug, title: o.title || o.slug, layer: row.layer, rule: o.rule });
+  }
   text = text.trimEnd() + '\n\n' + occurrenceEntry({ project: o.project, cost: o.cost, body: bodyText });
   await writeFile(lp, text, 'utf8');
 

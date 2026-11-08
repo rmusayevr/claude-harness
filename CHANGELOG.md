@@ -36,6 +36,7 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- `vault.mjs record` takes `--rule` and writes it into the lesson's head, so a lesson no longer graduates to the global vault with a placeholder instead of a rule. The first record of a slug requires it.
 - The plain split's fragments are now read exactly as the released guard read
   them, so the guards cannot be weaker than the release by construction. A
   fuzz test (8,000 generated commands) compares every guard with the release

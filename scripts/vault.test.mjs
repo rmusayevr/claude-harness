@@ -37,7 +37,7 @@ function vaultRun(args) {
 }
 
 const record = (dir, slug, extra = []) =>
-  vaultRun(['record', '--slug', slug, '--title', 'Markers need a TTL', '--layer', 'skill:stateful-markers',
+  vaultRun(['record', '--slug', slug, '--title', 'Markers need a TTL', '--layer', 'skill:stateful-markers', '--rule', 'Every marker gets a TTL.',
     '--body', bodyFile, '--project-dir', dir, ...extra]);
 
 describe('graduation', () => {
@@ -73,8 +73,8 @@ describe('graduation', () => {
     const b = path.join(root, 'body-b.md');
     writeFileSync(a, 'CS-64 in acme-api: lock with no TTL, queue stalled.');
     writeFileSync(b, 'Different service: processing flag cleared only in finally, 400 rows stuck.');
-    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--body', a, '--project-dir', projA]);
-    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--body', b, '--project-dir', projB]);
+    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--rule', 'R.', '--body', a, '--project-dir', projA]);
+    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--rule', 'R.', '--body', b, '--project-dir', projB]);
 
     const global_ = readFileSync(path.join(vault, 'm.md'), 'utf8');
     assert.match(global_, /CS-64 in acme-api/, "first project's occurrence must survive graduation");
@@ -87,9 +87,9 @@ describe('graduation', () => {
   test('a third occurrence does not duplicate the earlier ones in the global copy', () => {
     const a = path.join(root, 'body-a.md');
     writeFileSync(a, 'occurrence text alpha');
-    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--body', a, '--project-dir', projA]);
-    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--body', a, '--project-dir', projB]);
-    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--body', a, '--project-dir', projB]);
+    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--rule', 'R.', '--body', a, '--project-dir', projA]);
+    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--rule', 'R.', '--body', a, '--project-dir', projB]);
+    vaultRun(['record', '--slug', 'm', '--title', 'T', '--layer', 'l', '--rule', 'R.', '--body', a, '--project-dir', projB]);
     const global_ = readFileSync(path.join(vault, 'm.md'), 'utf8');
     assert.equal((global_.match(/^# /gm) ?? []).length, 1, 'one title');
     assert.ok((global_.match(/^### /gm) ?? []).length >= 2, 'history preserved');
@@ -138,6 +138,52 @@ describe('duplicate prevention', () => {
     const text = readFileSync(path.join(projA, '.claude/lessons/markers-need-ttl.md'), 'utf8');
     assert.equal((text.match(/^### /gm) ?? []).length, 2, 'two occurrence entries');
     assert.equal((text.match(/^# /gm) ?? []).length, 1, 'one lesson, one title');
+  });
+});
+
+describe('a lesson carries its rule', () => {
+  const lessonText = (dir) => readFileSync(path.join(dir, '.claude/lessons/markers-need-ttl.md'), 'utf8');
+
+  test('the first record writes the rule into the head, not a placeholder', () => {
+    record(projA, 'markers-need-ttl');
+    const text = lessonText(projA);
+    assert.match(text, /\*\*Rule:\*\* Every marker gets a TTL\.\n\n## Occurrences/);
+    assert.doesNotMatch(text, /sharpen this as occurrences/);
+  });
+
+  test('the first record without --rule is refused and writes nothing', () => {
+    const r = vaultRun(['record', '--slug', 'markers-need-ttl', '--title', 'T', '--layer', 'l', '--body', bodyFile, '--project-dir', projA]);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /--rule/);
+    assert.ok(!existsSync(path.join(projA, '.claude/lessons/markers-need-ttl.md')));
+  });
+
+  test('a later record can sharpen the rule', () => {
+    record(projA, 'markers-need-ttl');
+    const r = vaultRun(['record', '--slug', 'markers-need-ttl', '--layer', 'l', '--rule', 'Every marker gets a TTL and an owner.', '--body', bodyFile, '--project-dir', projA]);
+    assert.equal(r.code, 0, r.err);
+    assert.match(lessonText(projA), /\*\*Rule:\*\* Every marker gets a TTL and an owner\.\n\n## Occurrences/);
+  });
+
+  test('a lesson that graduates has a real rule', () => {
+    record(projA, 'markers-need-ttl');
+    record(projB, 'markers-need-ttl');
+    const global = readFileSync(path.join(vault, 'markers-need-ttl.md'), 'utf8');
+    assert.match(global, /\*\*Rule:\*\* Every marker gets a TTL\./);
+    assert.doesNotMatch(global, /sharpen this as occurrences/);
+  });
+
+  test('an old lesson that still has the placeholder cannot be recorded to without a rule', () => {
+    record(projA, 'markers-need-ttl');
+    const file = path.join(projA, '.claude/lessons/markers-need-ttl.md');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('**Rule:** Every marker gets a TTL.', '**Rule:** _(sharpen this as occurrences accumulate — do not add a second bullet for the same failure; rewrite this line so it covers both.)_'));
+    const bare = ['record', '--slug', 'markers-need-ttl', '--layer', 'l', '--body', bodyFile, '--project-dir', projA];
+    const refused = vaultRun(bare);
+    assert.equal(refused.code, 1);
+    assert.match(refused.err, /has no rule yet/);
+    const fixed = vaultRun([...bare, '--rule', 'Every marker gets a TTL.']);
+    assert.equal(fixed.code, 0, fixed.err);
+    assert.match(lessonText(projA), /\*\*Rule:\*\* Every marker gets a TTL\./);
   });
 });
 
