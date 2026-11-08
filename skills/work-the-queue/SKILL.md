@@ -28,10 +28,9 @@ Take the first open, unparked issue from the queue (order rules in
 **they are the spec.** If they contradict the issue body, the newest owner
 comment wins; if that is unclear, ask.
 
-**Empty queue:** write a new issue only from a problem the user named, or a
-concrete finding from this run (a failing check, a review finding outside the
-last PR's scope). Never invent work. Create it with the queue label, then read
-it back with `gh issue view` and work from what GitHub has, not your draft.
+**Empty queue:** write an issue only from a problem the user named or a
+concrete finding from this run; never invent work. Create it with the queue
+label, then work from `gh issue view`, not from your draft.
 
 ## 2. Size it, then plan
 
@@ -58,25 +57,24 @@ Delegate the PR diff, and nothing else, to the `fresh-eyes-reviewer` subagent;
 never review your own PR in this context. Run `triage-review` on what comes back.
 Fix blockers, ask decisions, repeat until ready, or stop after three rounds.
 
-## 5. Merge and confirm
+## 5. Merge, confirm, then back to step 1
 
 - `gh pr checks <n> --watch`. A failure in a test the PR does not touch may be
   rerun **once** (`gh run rerun <id> --failed`); a second failure is a blocker.
-- Ready and `autoMerge` → `gh pr merge <n> --<mergeMethod>`. Otherwise stop
+- Ready and `autoMerge` → `gh pr merge <n> --<mergeMethod> --delete-branch`
+  (local and remote), then `git switch <base> && git pull`. Otherwise stop
   with "PR #n is ready to merge" and wait for the user's go.
 - Wait for the **base** CI run of the merge commit to finish green. Red base =
   stop the loop; fixing it is the next issue, before anything else.
 - Close what GitHub did not: `Closes #n` only fires on the default branch, so
   on any other base close the issue yourself and tick it in its parent.
-- Post a one-line status on the issue (merged as, what was not verified, how to
-  accept it), then go back to step 1.
+- Post a status line on the issue (merged as, not verified, how to accept).
 
 ## Park, don't wait
 
-A step that needs a human but does not block other issues — a deploy, a
-credential, a design file, manual acceptance — is parked: comment what is
-needed, add the `parkedLabel`, move to the next issue. Resume parked issues
-when the user says the thing is done.
+A step that needs a human (a deploy, a credential, a design file) and blocks
+no other issue is parked: comment what is needed, add the `parkedLabel`, take
+the next issue. Resume it when the user says the thing is done.
 
 The issue is the memory. Before context runs low, comment on the issue where
 you are and what is next (`handoff`); a new session resumes from that alone.
@@ -100,5 +98,7 @@ question with a recommendation first.
   the failed job once was the agreed fix, and a second failure counts as real.
 - **sual-cavab #1 (2026-11-08).** Checks needed PostgreSQL and the repo had
   no way to start one; a local service already held port 5432.
+- **sual-cavab (2026-11-08).** Merged PR branches piled up on GitHub and
+  locally: the merge step had no `--delete-branch`.
 - **A second client project.** A suite was reported green because the shell's
   exit code was the trailing `echo`'s. The runner itself had failed.

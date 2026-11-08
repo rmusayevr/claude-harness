@@ -113,12 +113,20 @@ between two agents.
 > do not run git checkout, switch, stash, reset or commit, and do not run the
 > test suite. Diff: `<output of gh pr diff <n>>`
 
+## Merged branches
+
+`--delete-branch` removes the PR branch on GitHub and locally. The repo can do
+the GitHub half on its own (Settings → "Automatically delete head branches",
+or `gh repo edit --delete-branch-on-merge`); suggest it once, it is the
+owner's setting. Never delete a branch whose PR is not merged.
+
 ## CI
 
 ```bash
 gh pr checks <n> --watch --fail-fast
 gh run rerun <run-id> --failed                 # once, for an unrelated flaky test
-gh pr merge <n> --merge                        # or --squash / --rebase per config
+gh pr merge <n> --merge --delete-branch        # or --squash / --rebase per config
+git switch <base> && git pull                  # --delete-branch left you on base
 sha=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)
 gh run list --branch <base> --commit "$sha" --json databaseId,status,conclusion,name
 gh run watch <run-id> --exit-status
