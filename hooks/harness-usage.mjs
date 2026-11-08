@@ -13,8 +13,8 @@
  *
  * It never decides and never speaks: no stdout at all. On UserPromptSubmit,
  * stdout would be added to Claude's context, which is exactly the per-event
- * tax ARCHITECTURE.md forbids. Only the skill or command name is written,
- * never the prompt text. Local file, no network.
+ * tax the harness's ARCHITECTURE.md forbids. Only the skill or command name
+ * is written, never the prompt text. Local file, no network.
  *
  * FAIL OPEN and silent, like every hook here.
  */
