@@ -29,6 +29,9 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- The guards' command splitter was hardened after review found the
+  quote-aware version could hide commands. Comments, nested shells, subshells,
+  control flow and shell-fed heredocs are now inspected; see the guard tests.
 - The guards split commands with a regex that ignored quotes and heredocs,
   and missed a lone `&`. A `.env` path that was only quoted text was denied,
   and `rm -rf x & cp a .env` was not checked. Commands are now split only

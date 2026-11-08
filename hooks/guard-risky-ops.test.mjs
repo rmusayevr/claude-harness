@@ -299,6 +299,79 @@ describe('quoted text and heredocs are text, not commands', () => {
     expect(bash('echo "harmless text" > .env'), 'deny', 'quoted content, real redirect');
     expect(bash("echo 'a && b' && cp x .env"), 'deny', 'quoted operator, real second command');
   });
+
+  test('an escaped quote does not end a double-quoted string', () => {
+    expect(bash('node -e "const s = \\"a\\"; [1].map((x) => x)" && echo ok'), 'allow', '=> inside quoted JS is not a redirect');
+  });
+});
+
+// Bought by sual-cavab PR #16: the quote-aware splitter from PR #13 made the
+// guards WEAKER. An apostrophe in a comment opened a "quote" that swallowed
+// every later line, and quoting hid commands that a shell would still run.
+// The five reviewer reproductions come first; the rest were found attacking
+// the fix before it shipped.
+describe('commands a shell runs are seen, wherever they sit', () => {
+  test('the incident: an apostrophe in a comment no longer hides later lines', () => {
+    expect(bash("# don't worry, this is safe\nrm -rf ~"), 'deny', 'comment line');
+    expect(bash("echo hi # it's fine\ncp .env.example .env"), 'deny', 'trailing comment');
+    expect(bash("# TODO: don't forget\ngit push --force origin main"), 'deny', 'comment then force push');
+  });
+
+  test('bash -c, sh -c and eval strings are commands', () => {
+    expect(bash('bash -c "echo hi; rm -rf ~"'), 'deny', 'bash -c');
+    expect(bash('bash -lc "rm -rf ~"'), 'deny', 'combined flags');
+    expect(bash("sh -c 'cp .env.example .env'"), 'deny', 'sh -c');
+    expect(bash('eval "rm -rf ~"'), 'deny', 'quoted eval');
+    expect(bash('eval rm -rf ~'), 'deny', 'bare eval');
+    expect(bash("bash -c 'echo a; bash -c \"rm -rf ~\"'"), 'deny', 'nested twice');
+  });
+
+  test('behind a wrapper too', () => {
+    expect(bash("wsl -d Ubuntu -- bash -lc 'cd ~ && rm -rf build-venv'"), 'ask', 'wsl wrapper');
+    expect(bash('docker exec web sh -c "cp .env.example .env"'), 'deny', 'docker exec');
+    expect(bash('env A=1 bash -c "rm -rf ~"'), 'deny', 'env wrapper');
+  });
+
+  test('a heredoc fed to a shell is commands; << in arithmetic is a shift', () => {
+    expect(bash("bash <<'EOF'\nrm -rf ~\nEOF"), 'deny', 'bash heredoc');
+    expect(bash('echo $((a<<b))\nrm -rf ~'), 'deny', 'shift, then a real command');
+  });
+
+  test('control flow, grouping and substitution', () => {
+    for (const cmd of [
+      'if true; then rm -rf ~; fi',
+      'for f in a; do rm -rf ~; done',
+      'while true; do git push --force origin main; done',
+      '{ rm -rf ~; }',
+      '( cd /tmp && rm -rf ~ )',
+      'echo $(rm -rf ~)',
+      'x=1; ! rm -rf ~',
+      'case $x in a) rm -rf ~;; esac',
+      'time rm -rf ~',
+    ]) {
+      expect(bash(cmd), 'deny', cmd);
+    }
+  });
+
+  test('...and none of that turns ordinary text into commands', () => {
+    for (const cmd of [
+      `echo "it's # not a comment"`,
+      'curl http://example.com/#frag',
+      'echo ${#arr[@]}',
+      'echo a#b',
+      'bash -c "echo hi"',
+      `echo "bash -c 'rm -rf ~'"`,
+      "cat <<'EOF'\nrm -rf ~\nEOF",
+      'echo $((1<<2))',
+      'git log --format="%h #%s"',
+      "python - <<'PY'\nimport os\nPY",
+      'for f in *.md; do echo "$f"; done',
+      'if [ -f x ]; then echo yes; fi',
+      'rm -rf node_modules && npm ci',
+    ]) {
+      expect(bash(cmd), 'allow', cmd);
+    }
+  });
 });
 
 describe('allow (false-positive guard)', () => {
