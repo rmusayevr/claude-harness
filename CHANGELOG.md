@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- The usage log records a subagent's model when the call names one, and the guide says what the log cannot see.
 - **Usage tracking**: the `harness-usage` hook records each skill that loads
   (skill name only, never the prompt) in `.claude/harness-usage.log`, and
   `npm run usage` reports what was used and what never was. Subagents are
