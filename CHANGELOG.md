@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **`/harness:start`**: asks what you're doing and shows what to say, what will
+  happen, and what it will refuse. Slash-only, so it costs nothing per session.
+- `CONTRIBUTING.md`, and issue forms for "a guard blocked normal work" and
+  other bugs.
+
+### Changed
+- CI uses `actions/checkout@v5` and `actions/setup-node@v5`, which run on
+  Node 24; v4 ran on the retired Node 20.
+- `TUTORIAL.md` notes that it was recorded on 0.1.0.
+
 ## 0.2.0 (2026-11-08)
 
 ### Added

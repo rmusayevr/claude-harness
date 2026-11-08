@@ -7,6 +7,10 @@ had to be changed.
 
 If you want the reference instead, read [`GUIDE.md`](./GUIDE.md).
 
+> Recorded on harness 0.1.0. The counts below (52 skills, two guards) are what
+> was installed at the time and are left as recorded. 0.2.0 adds the issue loop
+> and a third guard; see [`CHANGELOG.md`](./CHANGELOG.md).
+
 ---
 
 ## Method
