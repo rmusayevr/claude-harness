@@ -15,7 +15,8 @@ first use.
 - Read `.claude/harness-loop.json`. If it is missing, propose one from
   `reference.md` (base branch, queue label, checks, risky paths) and stop until
   the user approves it. `guard-merge` enforces it (see `reference.md`).
-- `gh auth status` succeeds, the working tree is clean, `git fetch origin`.
+- `gh auth status` succeeds, the tree is clean, `git fetch origin`, and what
+  `checks` need (a database) runs; if nothing in the repo starts it, say so.
 - If `base` is a protected branch (`main`, `master`, `production`…), set
   `autoMerge` to false for this run: the loop gets PRs to ready and a human
   merges them.
@@ -77,6 +78,9 @@ credential, a design file, manual acceptance — is parked: comment what is
 needed, add the `parkedLabel`, move to the next issue. Resume parked issues
 when the user says the thing is done.
 
+The issue is the memory. Before context runs low, comment on the issue where
+you are and what is next (`handoff`); a new session resumes from that alone.
+
 ## Stop and ask only for
 
 Business rules (money, who may do what, reservations, identity, or anything in
@@ -84,20 +88,17 @@ Business rules (money, who may do what, reservations, identity, or anything in
 that denied, a red base, or an empty queue with no problem to write up. Ask one
 question with a recommendation first.
 
-## Long runs
-
-The issue is the memory. Before context runs low, comment on the issue where
-you are and what is next (`handoff`); a new session resumes from that alone.
 
 ## Incidents
 
-- **Client web project (2026-11).** The loop ran for a week from a pasted page
-  of standing rules. A reviewer subagent ran `git checkout` and left the shared
-  checkout on a detached HEAD; the next commit went nowhere. Reviewers are now
-  read-only.
+- **Client web project (2026-11).** A reviewer subagent ran `git checkout`
+  and left the shared checkout on a detached HEAD; the next commit went
+  nowhere. Reviewers are now read-only.
 - **Same project.** Tasks merged into `staging` stayed open: `Closes #n` only
   acts on the default branch. The owner had to ask for them to be closed.
 - **Same project.** One flaky frontend test failed unrelated PRs; rerunning
   the failed job once was the agreed fix, and a second failure counts as real.
+- **sual-cavab #1 (2026-11-08).** Checks needed PostgreSQL and the repo had
+  no way to start one; a local service already held port 5432.
 - **A second client project.** A suite was reported green because the shell's
   exit code was the trailing `echo`'s. The runner itself had failed.

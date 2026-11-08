@@ -5,7 +5,8 @@
 ### Added
 - **Usage tracking**: the `harness-usage` hook records each skill that loads
   (skill name only, never the prompt) in `.claude/harness-usage.log`, and
-  `npm run usage` reports what was used and what never was.
+  `npm run usage` reports what was used and what never was. Subagents are
+  recorded too, as `agent:<name>`.
 - **How it works diagram**: an interactive walkthrough at
   https://rmusayevr.github.io/claude-harness/ (from `docs/index.html`), and a
   static light/dark copy at the top of the README. `npm run diagram`
@@ -16,6 +17,10 @@
   other bugs.
 
 ### Changed
+- `review-a-dependency` checks release age first: pin the newest release at
+  least two weeks old.
+- `work-the-queue` confirms what the checks need (a database) is running
+  before the first issue.
 - `npm run audit` folds a repeated finding into one line; `--verbose` lists
   them all.
 - `promote-lesson` and `work-the-queue` are under 100 body lines.

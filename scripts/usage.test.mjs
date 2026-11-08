@@ -35,11 +35,13 @@ test('counts harness skills, ignores other slash commands and broken lines', () 
     e('reproduce-first', 'auto', '2026-11-03T10:00:00Z', 's2'),
     e('start', 'typed', '2026-11-04T10:00:00Z', 's2'),
     e('model', 'typed', '2026-11-04T10:01:00Z', 's2'),
+    e('agent:fresh-eyes-reviewer', 'auto', '2026-11-04T10:02:00Z', 's2'),
+    e('agent:someone-elses-agent', 'auto', '2026-11-04T10:03:00Z', 's2'),
     '{not json',
   ]);
-  assert.equal(r.uses, 3, '/model is Claude Code\'s, not ours');
+  assert.equal(r.uses, 4, '/model and other agents are not ours');
   assert.equal(r.sessions, 2);
-  assert.deepEqual(r.used.map((u) => [u.skill, u.auto, u.typed]), [['reproduce-first', 2, 0], ['start', 0, 1]]);
+  assert.deepEqual(r.used.map((u) => [u.skill, u.auto, u.typed]), [['reproduce-first', 2, 0], ['start', 0, 1], ['agent:fresh-eyes-reviewer', 1, 0]]);
   assert.ok(r.never.some((n) => n.skill === 'write-an-adr' && n.slashOnly), 'never-used lists slash-only ones as such');
   assert.ok(r.never.some((n) => n.skill === 'stateful-markers' && n.group === 'backend'), 'stack packs are included');
   assert.ok(!r.never.some((n) => n.skill === 'reproduce-first'));
