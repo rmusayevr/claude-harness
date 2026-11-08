@@ -229,6 +229,34 @@ describe('shell writes reach the same rules', () => {
   });
 });
 
+// Bought by sual-cavab: the first match won, so an `ask` early in a compound
+// command hid a `deny` later in it. The permission mode auto-approved the ask
+// and the `.env` write ran unchecked.
+describe('compound commands: the most severe decision wins', () => {
+  test('the incident: an ask before a deny no longer hides the deny', () => {
+    const got = expect(
+      bash('cd backend && rm -rf core/admin.py core/migrations && cp .env.example .env && docker info'),
+      'deny',
+      'rm -rf (ask) then cp to .env (deny)',
+    );
+    assert.equal(got.rule, 'write-dotenv-via-bash');
+  });
+
+  test('order does not matter', () => {
+    expect(bash('cp .env.example .env && rm -rf core/migrations'), 'deny', 'deny first');
+    expect(bash('git reset --hard && git push --force origin main'), 'deny', 'ask then deny on git');
+  });
+
+  test('two asks still ask, and the first is the one reported', () => {
+    const got = expect(bash('rm -rf core/migrations && git reset --hard'), 'ask', 'two asks');
+    assert.equal(got.rule, 'rm-rf-nondisposable');
+  });
+
+  test('an ask next to harmless segments is still an ask', () => {
+    expect(bash('rm -rf old-src && echo done && ls'), 'ask', 'ask plus noise');
+  });
+});
+
 describe('allow (false-positive guard)', () => {
   test('force-pushing a feature branch is normal work', () => {
     for (const cmd of [
