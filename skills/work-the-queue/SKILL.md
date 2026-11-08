@@ -72,8 +72,8 @@ Fix blockers, ask decisions, repeat until ready, or stop after three rounds.
 
 ## Park, don't wait
 
-A step that needs a human (a deploy, a credential, a design file, manual
-acceptance) is parked: comment what is needed, add the `parkedLabel`, take
+A step that needs a human (a deploy, a credential, a design file) and blocks
+no other issue is parked: comment what is needed, add the `parkedLabel`, take
 the next issue. Resume it when the user says the thing is done.
 
 The issue is the memory. Before context runs low, comment on the issue where
