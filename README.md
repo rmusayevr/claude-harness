@@ -39,7 +39,7 @@ node install.mjs uninstall --target /path/to/project
 Profiles: `core` (skills only) · `backend` · `frontend` · `full`.
 
 **The two delivery modes differ in one way.** Installed as a plugin you get the
-50 core skills in `skills/`; stack packs in `rules/` are *not* loaded, because a
+52 core skills in `skills/`; stack packs in `rules/` are *not* loaded, because a
 plugin has no profile mechanism to select them. `install.mjs` is what delivers
 packs, per profile. Use the plugin for the stack-agnostic core and the installer
 when you want a project to carry stack-specific rules too.
@@ -109,6 +109,21 @@ vault fills with irrelevant context.
 Everything is plain Markdown, including the index, which is a table you can read
 in a diff. Local only, no telemetry.
 
+## The issue loop
+
+`/harness:work-the-queue` runs GitHub issues end to end: pick the next issue,
+or write one from a problem you named. Then size it, plan (Medium and Risky
+wait for approval), build, open a PR, have `fresh-eyes-reviewer` review it,
+`triage-review` the findings, fix blockers, merge into the configured base on
+green CI, wait for the base CI, and take the next issue. It stops only for
+business rules, new dependencies, work bigger than planned, or a red base, and
+it parks issues that need a human (a deploy, a credential) instead of waiting.
+
+It is opt-in per project through `.claude/harness-loop.json`; the schema is in
+`skills/work-the-queue/reference.md`. The same file switches `guard-merge` to
+deny any merge that is not a green PR into that base, and a protected base
+(`main`) turns auto-merge off: the loop gets PRs to ready and a human merges.
+
 ## Auditing the harness
 
 `/harness-audit` turns the harness on itself.
@@ -135,5 +150,6 @@ worse than a missing one, because later nobody can tell them apart.
 
 ## Local only
 
-Plain Markdown on disk. No telemetry, no network calls, no service. The lesson
+Plain Markdown on disk. No telemetry, no service. The one network call is
+`guard-merge` asking `gh` about a PR you are merging. The lesson
 vault is inspectable in a diff or it is not a vault.

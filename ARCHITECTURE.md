@@ -157,5 +157,7 @@ unsupported claim. A rule without an incident is the same thing.
 
 ## Locality
 
-Everything is plain Markdown on local disk. No telemetry, no network calls, no service.
+Everything is plain Markdown on local disk. No telemetry, no service. The one network
+call is `guard-merge` asking `gh` for a PR's base and checks, because neither is in the
+command; it is made only for `gh pr merge` and fails open.
 The lesson vault is inspectable in a diff, or it isn't a vault.
