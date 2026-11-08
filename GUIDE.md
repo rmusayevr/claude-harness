@@ -23,7 +23,7 @@ making it worse. If you only read one section, read
 
 ## What this is, and what it is not
 
-**It is a discipline layer.** 52 skills, 3 enforcement hooks, 1 review subagent,
+**It is a discipline layer.** 53 skills, 3 enforcement hooks, 1 review subagent,
 and a lesson vault, packaged as a Claude Code plugin you install into every
 project. It changes *how* work gets done — what gets checked, what gets
 verified, what gets refused — not *what* gets built.
@@ -104,7 +104,7 @@ Skills appear namespaced: `/harness:reproduce-first`.
 - Updates arrive by bumping the version and running `/plugin marketplace update`
 - Nothing is written into your project
 - **Stack packs in `rules/` are not loaded** — a plugin has no profile
-  mechanism, so you get the 52 stack-agnostic core skills only
+  mechanism, so you get the 53 stack-agnostic core skills only
 
 ### Mode B — copied into the project
 
@@ -174,7 +174,7 @@ occasion. It will refuse a hypothetical, and refusing is the feature.
 /harness:harness-audit
 ```
 
-Expect it to report 52 of its 54 skills with no incident recorded. That is correct: the
+Expect it to report 52 of its 55 skills with no incident recorded. That is correct: the
 harness ships with reasoning, not with your history. Those fill as you use it.
 
 ---
@@ -329,7 +329,7 @@ system getting better.
 
 ## The skill catalogue, by situation
 
-All 52 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
+All 53 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 
 **Diagnosis (8)** — `reproduce-first` · `trace-a-failure` · `isolate-the-layer` ·
 `diagnose-a-hang` · `bisect-the-change` · `environment-divergence` ·
@@ -358,7 +358,7 @@ All 52 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 
 **Delivery loop (2)** — `work-the-queue`* · `triage-review`
 
-**Harness (4)** — `promote-lesson` · `recall-lessons` · `harness-audit`* ·
+**Harness (5)** — `start`* · `promote-lesson` · `recall-lessons` · `harness-audit`* ·
 `harness-status`*
 
 **Stack packs (2, installer only)** — `stateful-markers` (backend) ·
@@ -515,7 +515,7 @@ npm run listing-cost
 ```
 
 ```
-9678 chars across 46 billed skills (54 on disk)
+9678 chars across 46 billed skills (55 on disk)
 ~2420 tokens, every session and every subagent
 ```
 
@@ -615,7 +615,7 @@ Same routing check, plus:
 ### What it costs, and where it is weak
 
 - **~2,400 tokens every session**, multiplied inside every subagent. Not free.
-- **Almost no skill has an incident recorded yet.** 52 of 54 ship as *reasoning*, not
+- **Almost no skill has an incident recorded yet.** 52 of 55 ship as *reasoning*, not
   as earned history. That is honest, but it means the provenance discipline is
   currently aspirational — it becomes real as you use it.
 - **Stack packs are nearly empty.** `--profile backend` installs one extra
@@ -662,6 +662,7 @@ harnesses into unreadable ones:
 
 | Command | When |
 |---|---|
+| `/harness:start` | New to the harness: what to say for what you're doing |
 | `/harness:map-subsystem <area>` | Map unfamiliar code in a forked context |
 | `/harness:fresh-eyes-review` | Subagent review of the current diff |
 | `/harness:promote-lesson` | Something just cost you work |
@@ -705,7 +706,7 @@ node scripts/vault.mjs list --project-dir .
 |---|---|
 | `.claude-plugin/plugin.json` | Plugin manifest — the only file in that directory |
 | `.claude-plugin/marketplace.json` | Catalog, so the repo works as a marketplace |
-| `skills/<name>/SKILL.md` | The 52 core skills |
+| `skills/<name>/SKILL.md` | The 53 core skills |
 | `rules/<stack>/<name>/SKILL.md` | Stack packs, installed selectively |
 | `agents/fresh-eyes-reviewer.md` | The review subagent |
 | `hooks/hooks.json` | **Single source of truth** for hook wiring |

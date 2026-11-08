@@ -373,7 +373,7 @@ export function decide(payload) {
     if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(tool)) {
       // Edit/MultiEdit always target an existing file; Write may or may not.
       const target = input.file_path ?? input.notebook_path;
-      const exists = tool !== 'Write' || (() => { try { return existsSync(target); } catch { return false; } })();
+      const exists = tool !== 'Write' || (typeof target === 'string' && target !== '' && fileExists(target));
       return checkWrite(target, exists);
     }
     return null;

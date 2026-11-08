@@ -1,0 +1,31 @@
+name: A guard blocked normal work
+description: A safety guard denied or asked about something it should have let through.
+labels: ["guard", "false-positive"]
+body:
+  - type: textarea
+    id: command
+    attributes:
+      label: What was blocked
+      description: The command or file path, exactly as Claude ran it.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: What the guard said
+      description: The message starting with [harness:...]. The rule name in the brackets is the most useful part.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this was normal work
+      description: What you were doing, and why the action was safe here.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Node version, harness version (from /harness:harness-status), plugin or installer.
