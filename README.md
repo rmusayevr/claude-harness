@@ -7,7 +7,7 @@ done.** It reproduces bugs before fixing them, tests for real, reviews its own
 changes with fresh eyes, and refuses dangerous commands.
 
 You don't learn anything new to use it. Install it and keep talking to Claude
-the way you already do.
+the way you already do. New to it? Type `/harness:start`.
 
 ## Install
 
@@ -46,10 +46,11 @@ These run on every command, whether Claude remembers the rules or not.
 If a guard blocks something it shouldn't, that's a bug. Please
 [open an issue](https://github.com/rmusayevr/claude-harness/issues).
 
-## Three commands worth knowing
+## Commands worth knowing
 
 | Command | What it does |
 |---|---|
+| `/harness:start` | Asks what you're doing and shows what to say. Start here |
 | `/harness:promote-lesson` | "Remember this mistake." Turns it into a rule that fires before the same mistake next time |
 | `/harness:work-the-queue` | Works through your GitHub issues on its own: plan, build, PR, review, merge, next. Opt-in per project |
 | `/harness:harness-status` | Checks the install is working |
@@ -58,7 +59,8 @@ Everything else happens without being asked.
 
 ## Learn more
 
-- [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 52 checklists, grouped by situation
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md): how to add a rule or report a guard that over-blocks
+- [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 53 checklists, grouped by situation
 - [`GUIDE.md`](./GUIDE.md): the full guide, including when *not* to use it
 - [`TUTORIAL.md`](./TUTORIAL.md): a recorded run on a real project
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it
