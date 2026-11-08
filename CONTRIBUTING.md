@@ -44,5 +44,8 @@ npm run listing-cost
 
 CI runs the tests on Linux, macOS and Windows with Node 22 and 24.
 
+Changed the diagram in `docs/index.html`? Run `npm run diagram` to regenerate
+the README's static copy. CI fails if you forget.
+
 In the PR, say what changed, which incident it comes from, and how you
 verified it.

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="An interactive walkthrough of claude-harness: pick something you might say to Claude and see which checklist loads and what the safety guards do.">
+<title>How the Harness Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one interactive system diagram, scenario picker above, step narration below. Same tokens as the skill catalogue. */
+:root {
+  --bg: #f5f6f3;
+  --panel: #ffffff;
+  --ink: #1b2220;
+  --muted: #5d6763;
+  --line: #c9cfc9;
+  --faint: #e6e9e5;
+  --accent: #1f5f8b;
+  --accent-soft: #e3eef6;
+  --good: #2f7a4b;
+  --good-soft: #e2f1e7;
+  --warn: #a6620c;
+  --warn-soft: #fbf0df;
+  --bad: #b23b2e;
+  --bad-soft: #f8e3e0;
+  --font-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121615; --panel: #1a201e; --ink: #e6ebe8; --muted: #9aa5a0; --line: #3a4541; --faint: #242c29;
+    --accent: #7db7df; --accent-soft: #1c2e3a; --good: #6cc48d; --good-soft: #17301f;
+    --warn: #e3a54f; --warn-soft: #33281a; --bad: #ee8272; --bad-soft: #3a1f1b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121615; --panel: #1a201e; --ink: #e6ebe8; --muted: #9aa5a0; --line: #3a4541; --faint: #242c29;
+  --accent: #7db7df; --accent-soft: #1c2e3a; --good: #6cc48d; --good-soft: #17301f;
+  --warn: #e3a54f; --warn-soft: #33281a; --bad: #ee8272; --bad-soft: #3a1f1b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 56px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { margin: 0; font-size: clamp(28px, 4vw, 38px); line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 66ch; }
+code { font-family: var(--font-mono); font-size: 0.86em; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+
+.picker { display: flex; flex-direction: column; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; text-align: left; }
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.chip:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+figure { margin: 0; background: var(--panel); border: 1px solid var(--faint); border-radius: 12px; overflow: hidden; }
+.scroll { overflow-x: auto; }
+svg.diagram { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); font-family: var(--font-body); }
+figcaption { padding: 10px 16px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--faint); }
+
+/* nodes */
+.node rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+.node .t { font-size: 13px; font-weight: 600; fill: currentColor; }
+.node .s { font-size: 11px; fill: var(--muted); }
+.node .m { font-family: var(--font-mono); font-size: 11.5px; fill: currentColor; }
+.node { cursor: pointer; transition: opacity .25s; }
+.frame rect { fill: none; stroke: var(--line); stroke-dasharray: 4 4; }
+.frame .ft { font-size: 12px; font-weight: 600; fill: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.frame { transition: opacity .25s; }
+.node.on rect { stroke: var(--accent); stroke-width: 2; fill: var(--accent-soft); }
+.node.out-run.on rect { stroke: var(--good); fill: var(--good-soft); }
+.node.out-ask.on rect { stroke: var(--warn); fill: var(--warn-soft); }
+.node.out-block.on rect { stroke: var(--bad); fill: var(--bad-soft); }
+.node.out-run .t { fill: var(--good); }
+.node.out-ask .t { fill: var(--warn); }
+.node.out-block .t { fill: var(--bad); }
+
+/* edges */
+.edge path { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.edge .l { font-size: 11px; fill: var(--muted); }
+.edge { transition: opacity .25s; }
+.edge.on path { stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: 7 5; }
+.edge.on .l { fill: var(--accent); font-weight: 600; }
+.edge.on.e-good path { stroke: var(--good); } .edge.on.e-good .l { fill: var(--good); }
+.edge.on.e-warn path { stroke: var(--warn); } .edge.on.e-warn .l { fill: var(--warn); }
+.edge.on.e-bad path { stroke: var(--bad); } .edge.on.e-bad .l { fill: var(--bad); }
+.mk { fill: var(--muted); }
+.mk-on { fill: var(--accent); }
+.mk-good { fill: var(--good); } .mk-warn { fill: var(--warn); } .mk-bad { fill: var(--bad); }
+svg.playing .node:not(.on), svg.playing .edge:not(.on) { opacity: 0.28; }
+@media (prefers-reduced-motion: no-preference) {
+  .edge.on path { animation: flow 0.9s linear infinite; }
+}
+@keyframes flow { to { stroke-dashoffset: -24; } }
+
+/* narration */
+.panel { background: var(--panel); border: 1px solid var(--faint); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 20px; align-items: start; }
+.panel .what { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.panel h2 { margin: 0; font-size: 19px; line-height: 1.3; text-wrap: balance; }
+.panel p { margin: 0; max-width: 68ch; }
+.panel .said { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+.controls { display: flex; gap: 8px; align-items: center; }
+.btn { font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.steps { display: flex; gap: 5px; grid-column: 1 / -1; }
+.steps i { width: 26px; height: 4px; border-radius: 2px; background: var(--faint); }
+.steps i.done { background: var(--accent); }
+.verdict { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; width: fit-content; }
+.verdict.run { color: var(--good); background: var(--good-soft); }
+.verdict.ask { color: var(--warn); background: var(--warn-soft); }
+.verdict.block { color: var(--bad); background: var(--bad-soft); }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.fact { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 2px solid var(--faint); min-width: 0; }
+.fact b { font-size: 15px; }
+.fact span { font-size: 14px; color: var(--muted); }
+footer { font-size: 13px; color: var(--muted); }
+
+@media (max-width: 640px) {
+  .panel { grid-template-columns: 1fr; }
+}
+body { margin: 0; }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">claude-harness 0.2.0</div>
+    <h1>How the Harness Works</h1>
+  </header>
+  <p class="lede">Pick something you might say to Claude. The diagram walks through what happens, step by step: what Claude already has loaded, which checklist it pulls in, and what the safety guards do before any command runs.</p>
+
+  <div class="picker">
+    <span class="eyebrow">You say…</span>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <figure>
+    <div class="scroll">
+      <svg class="diagram" id="svg" viewBox="0 0 980 530" role="img" aria-label="Your request reaches a Claude session that always holds the rules and a one-line list of checklists. A matching checklist loads, Claude calls a tool, and three safety guards decide to allow, ask or block before it runs. A separate reviewer sees only the diff, and mistakes become lessons.">
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-on" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-good" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-warn" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-bad" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <!-- frames -->
+        <g class="frame" data-frame="session"><rect x="170" y="30" width="300" height="400" rx="12"/><text class="ft" x="186" y="52">Claude session</text></g>
+        <g class="frame" data-frame="guards"><rect x="700" y="200" width="260" height="150" rx="12"/><text class="ft" x="714" y="222">Safety guards</text></g>
+
+        <!-- edges -->
+        <g class="edge" data-id="e_you"><path d="M140 172 H165 V154 H188"/></g>
+        <g class="edge" data-id="e_match"><path d="M320 178 V200"/><text class="l" x="330" y="194">match</text></g>
+        <g class="edge" data-id="e_body"><path d="M320 250 V272"/><text class="l" x="330" y="266">follows it</text></g>
+        <g class="edge" data-id="e_tool"><path d="M450 302 H518"/><text class="l" x="485" y="293" text-anchor="middle">calls a tool</text></g>
+        <g class="edge" data-id="e_check"><path d="M650 302 H698"/><text class="l" x="675" y="293" text-anchor="middle">first</text></g>
+        <g class="edge e-good" data-id="e_run"><path d="M740 350 V398"/><text class="l" x="746" y="380">allow</text></g>
+        <g class="edge e-warn" data-id="e_ask"><path d="M830 350 V398"/><text class="l" x="836" y="380">ask</text></g>
+        <g class="edge e-bad" data-id="e_deny"><path d="M920 350 V398"/><text class="l" x="926" y="380">deny</text></g>
+        <g class="edge" data-id="e_log"><path d="M880 200 V162"/><text class="l" x="886" y="186">logged</text></g>
+        <g class="edge" data-id="e_gh"><path d="M730 200 V135 H652"/><text class="l" x="691" y="128" text-anchor="middle">asks GitHub</text></g>
+        <g class="edge" data-id="e_review"><path d="M300 330 V458"/><text class="l" x="292" y="420" text-anchor="end">diff only</text></g>
+        <g class="edge" data-id="e_findings"><path d="M380 460 V332"/><text class="l" x="388" y="420">findings</text></g>
+        <g class="edge" data-id="e_lesson"><path d="M190 316 H80 V458"/><text class="l" x="88" y="436">lesson</text></g>
+
+        <!-- nodes -->
+        <g class="node" data-id="you"><rect x="20" y="140" width="120" height="64" rx="8"/><text class="t" x="80" y="167" text-anchor="middle">You</text><text class="s" x="80" y="185" text-anchor="middle">describe the task</text></g>
+
+        <g class="node" data-id="rules"><rect x="190" y="64" width="260" height="48" rx="8"/><text class="t" x="206" y="85">Working rules</text><text class="s" x="206" y="101">CLAUDE.md block · always loaded</text></g>
+        <g class="node" data-id="listing"><rect x="190" y="130" width="260" height="48" rx="8"/><text class="t" x="206" y="151">Checklist index</text><text class="s" x="206" y="167">one line per checklist · always loaded</text></g>
+        <g class="node" data-id="body"><rect x="190" y="202" width="260" height="48" rx="8"/><text class="t" x="206" y="223">The matching checklist</text><text class="s" x="206" y="239">loads only when it matches</text></g>
+        <g class="node" data-id="claude"><rect x="190" y="274" width="260" height="56" rx="8"/><text class="t" x="206" y="298">Claude works</text><text class="s" x="206" y="315">reads, edits, runs commands</text></g>
+
+        <g class="node" data-id="reviewer"><rect x="190" y="460" width="260" height="52" rx="8"/><text class="t" x="206" y="482">Fresh-eyes reviewer</text><text class="s" x="206" y="499">a separate Claude, no memory of the work</text></g>
+        <g class="node" data-id="vault"><rect x="20" y="460" width="120" height="52" rx="8"/><text class="t" x="80" y="482" text-anchor="middle">Lessons</text><text class="s" x="80" y="499" text-anchor="middle">project, then global</text></g>
+
+        <g class="node" data-id="tool"><rect x="520" y="274" width="130" height="56" rx="8"/><text class="t" x="585" y="298" text-anchor="middle">Tool call</text><text class="s" x="585" y="315" text-anchor="middle">Bash · Write · Edit</text></g>
+        <g class="node" data-id="github"><rect x="520" y="110" width="130" height="50" rx="8"/><text class="t" x="585" y="131" text-anchor="middle">GitHub</text><text class="s" x="585" y="147" text-anchor="middle">PR target and checks</text></g>
+        <g class="node" data-id="log"><rect x="800" y="110" width="160" height="50" rx="8"/><text class="t" x="880" y="131" text-anchor="middle">Decisions log</text><text class="s" x="880" y="147" text-anchor="middle">every ask and deny</text></g>
+
+        <g class="node" data-id="g_risky"><rect x="714" y="232" width="232" height="30" rx="6"/><text class="m" x="726" y="251">guard-risky-ops</text><text class="s" x="934" y="251" text-anchor="end">files, git, deletes</text></g>
+        <g class="node" data-id="g_ddl"><rect x="714" y="270" width="232" height="30" rx="6"/><text class="m" x="726" y="289">guard-prod-ddl</text><text class="s" x="934" y="289" text-anchor="end">prod databases</text></g>
+        <g class="node" data-id="g_merge"><rect x="714" y="308" width="232" height="30" rx="6"/><text class="m" x="726" y="327">guard-merge</text><text class="s" x="934" y="327" text-anchor="end">PR merges</text></g>
+
+        <g class="node out-run" data-id="run"><rect x="700" y="400" width="80" height="44" rx="8"/><text class="t" x="740" y="427" text-anchor="middle">Runs</text></g>
+        <g class="node out-ask" data-id="ask"><rect x="790" y="400" width="80" height="44" rx="8"/><text class="t" x="830" y="427" text-anchor="middle">Asks you</text></g>
+        <g class="node out-block" data-id="block"><rect x="880" y="400" width="80" height="44" rx="8"/><text class="t" x="920" y="427" text-anchor="middle">Blocked</text></g>
+      </svg>
+    </div>
+    <figcaption>Every command passes the safety guards before it runs. Checklists load only when your request matches one. Click any box to see what it is.</figcaption>
+  </figure>
+
+  <div class="panel" aria-live="polite">
+    <div class="what">
+      <span class="said" id="said"></span>
+      <h2 id="stepTitle"></h2>
+      <p id="stepText"></p>
+      <span class="verdict" id="verdict" hidden></span>
+    </div>
+    <div class="controls">
+      <button class="btn" id="prev" type="button">Back</button>
+      <button class="btn primary" id="next" type="button">Next</button>
+    </div>
+    <div class="steps" id="steps"></div>
+  </div>
+
+  <div class="facts">
+    <div class="fact"><b>You don't name checklists</b><span>Describe what's happening. Claude matches your words against the one-line index and loads the checklist that fits.</span></div>
+    <div class="fact"><b>Guards don't rely on memory</b><span>They are scripts that check every command before it runs. Claude can't forget them, and it reports a block instead of working around it.</span></div>
+    <div class="fact"><b>Small by design</b><span>Only the rules and the index load every session, about 2,420 tokens. A checklist costs nothing until it matches.</span></div>
+  </div>
+
+  <footer>Install in Claude Code: <code>/plugin marketplace add rmusayevr/claude-harness</code> then <code>/plugin install harness@harness</code>. New to it? Type <code>/harness:start</code>. Source: <a href="https://github.com/rmusayevr/claude-harness">github.com/rmusayevr/claude-harness</a></footer>
+</div>
+
+<script>
+const INFO = {
+  you: ["You", "You describe what's going on in plain words. No commands or checklist names needed."],
+  rules: ["Working rules", "A short block in CLAUDE.md, loaded in every session: say what you ran versus what you expect, state what you won't touch, never route around a guard."],
+  listing: ["Checklist index", "One line for each of the 46 automatic checklists. Claude reads it every session and uses it to pick the checklist that matches your request."],
+  body: ["The matching checklist", "The full procedure, such as reproduce-first or fresh-eyes-review. It loads only when your request matches, then stays for the rest of the session."],
+  claude: ["Claude works", "Claude follows the checklist: reads code, edits files, runs commands. Every edit and command is a tool call, and every tool call meets the guards first."],
+  tool: ["Tool call", "A shell command or a file write. Before it runs, it goes to the safety guards."],
+  g_risky: ["guard-risky-ops", "Blocks writes to .env files and private keys, force-pushes to main, and rm -rf /. Asks before git reset --hard, deleting non-build folders, and deploys."],
+  g_ddl: ["guard-prod-ddl", "Asks before a migration or schema change runs against a database that looks like production, even when the address came from an old shell variable."],
+  g_merge: ["guard-merge", "Checks a PR's target branch and CI with GitHub before gh pr merge. Asks if checks are red. In the issue loop, it blocks anything but a green merge into the configured branch."],
+  github: ["GitHub", "guard-merge's one network call: the PR's target branch and the state of its checks. Nothing else leaves your machine."],
+  log: ["Decisions log", "Every ask and deny is written to .claude/harness-decisions.log, so afterwards you can see what fired and why."],
+  run: ["Runs", "No guard objected. The command runs and Claude carries on."],
+  ask: ["Asks you", "Claude may not approve this itself. You see the reason and decide."],
+  block: ["Blocked", "This should never happen by accident. It doesn't run, and Claude tells you instead of looking for another way."],
+  reviewer: ["Fresh-eyes reviewer", "A separate Claude that gets only the diff, not the conversation. It can't share the blind spots of whoever wrote the code."],
+  vault: ["Lessons", "When a mistake costs real work, /harness:promote-lesson records it for this project. Seen in two projects, it becomes a global lesson."],
+};
+
+const SCENARIOS = [
+  {
+    say: "This bug happens sometimes",
+    steps: [
+      { n: ["you", "listing"], e: ["e_you"], t: "Your words match a checklist", x: "Claude already has a one-line index of every checklist. \"Happens sometimes\" matches reproduce-first." },
+      { n: ["listing", "body"], e: ["e_match"], t: "Only that checklist loads", x: "reproduce-first loads in full. Its first rule: get the bug to happen on demand before touching any code." },
+      { n: ["body", "claude", "tool", "g_risky", "g_ddl", "g_merge", "run"], e: ["e_body", "e_tool", "e_check", "e_run"], t: "Running tests passes the guards", x: "Claude runs the failing case. Running tests is safe, so all three guards stay silent and the command runs.", v: "run" },
+      { n: ["claude", "rules"], e: [], t: "Fixed, and proven", x: "It fixes the bug, then shows the test that failed before now passes. The working rules make it say what it ran and what it didn't." },
+    ],
+  },
+  {
+    say: "Put my API key in .env",
+    steps: [
+      { n: ["you", "rules", "claude"], e: [], t: "No checklist needed", x: "Nothing in the index matches, so Claude just does the task: write the key into the .env file." },
+      { n: ["claude", "tool", "g_risky"], e: ["e_tool", "e_check"], t: "The write meets the guards first", x: "Before the file is written, guard-risky-ops checks the path. A .env file holds real secrets and isn't tracked by git." },
+      { n: ["g_risky", "block", "log"], e: ["e_deny", "e_log"], t: "Blocked, and logged", x: "The write never happens. Claude tells you it was blocked and suggests putting the key's name in .env.example, so you fill in the value yourself.", v: "block" },
+    ],
+  },
+  {
+    say: "Is this ready?",
+    steps: [
+      { n: ["you", "listing", "body"], e: ["e_you", "e_match"], t: "The review checklist loads", x: "\"Is this ready\" matches fresh-eyes-review: you can't review your own work, because what you know hides the bug." },
+      { n: ["body", "claude", "reviewer"], e: ["e_body", "e_review"], t: "A second Claude gets the diff and nothing else", x: "The reviewer sees the change, not the conversation that produced it. If the code only looks right with an explanation, that's a finding." },
+      { n: ["reviewer", "claude"], e: ["e_findings"], t: "Findings are sorted, not just fixed", x: "triage-review labels each one: blocker, decision, settled or nit. Blockers get fixed with a test, and decisions go to you." },
+      { n: ["claude"], e: [], t: "Ready means zero blockers", x: "A review always finds something, so the count doesn't matter. A change is ready at 0 blockers, 0 open decisions and green checks." },
+    ],
+  },
+  {
+    say: "Merge PR #12",
+    steps: [
+      { n: ["you", "claude", "tool"], e: ["e_tool"], t: "Claude runs the merge", x: "The command is gh pr merge 12. The PR's target branch and checks aren't in the command, so a guard has to ask." },
+      { n: ["tool", "g_merge", "github"], e: ["e_check", "e_gh"], t: "guard-merge asks GitHub", x: "It looks up where the PR goes and how its checks are doing. Here, one check is failing." },
+      { n: ["g_merge", "ask", "log"], e: ["e_ask", "e_log"], t: "It asks you first", x: "Merging over a red check is your call, not Claude's. In the unattended issue loop the same merge is blocked outright, and a merge into main always is.", v: "ask" },
+    ],
+  },
+  {
+    say: "That mistake cost us an hour",
+    steps: [
+      { n: ["you", "listing", "body"], e: ["e_you", "e_match"], t: "The lesson checklist loads", x: "promote-lesson only accepts real mistakes, the ones that cost work. A hypothetical gets turned down." },
+      { n: ["body", "claude", "vault"], e: ["e_body", "e_lesson"], t: "It's recorded with its cost", x: "The lesson goes into this project's lessons, with what happened and what it cost. Seen in a second project, it moves to the global lessons." },
+      { n: ["vault", "rules", "body", "g_risky", "g_ddl", "g_merge"], e: [], t: "It becomes a rule where it fires in time", x: "A guard if a script can check it, a checklist step if it's part of a procedure, a working rule only if it must always hold. Then the same mistake is caught next time." },
+    ],
+  },
+];
+
+const svg = document.getElementById("svg");
+const nodes = [...svg.querySelectorAll(".node")];
+const edges = [...svg.querySelectorAll(".edge")];
+let current = -1, step = 0;
+
+function markerFor(g) {
+  if (g.classList.contains("e-good")) return "a-good";
+  if (g.classList.contains("e-warn")) return "a-warn";
+  if (g.classList.contains("e-bad")) return "a-bad";
+  return "a-on";
+}
+
+function paint(onNodes, onEdges) {
+  const playing = onNodes.length > 0 || onEdges.length > 0;
+  svg.classList.toggle("playing", playing);
+  nodes.forEach(g => g.classList.toggle("on", onNodes.includes(g.dataset.id)));
+  edges.forEach(g => {
+    const on = onEdges.includes(g.dataset.id);
+    g.classList.toggle("on", on);
+    g.querySelector("path").setAttribute("marker-end", `url(#${on ? markerFor(g) : "a"})`);
+  });
+}
+
+const chipsEl = document.getElementById("chips");
+chipsEl.innerHTML = SCENARIOS.map((s, i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="false">"${s.say}"</button>`).join("");
+const chips = [...chipsEl.querySelectorAll(".chip")];
+
+const $ = id => document.getElementById(id);
+const VERDICT = { run: "Runs", ask: "Asks you", block: "Blocked" };
+
+function render() {
+  chips.forEach((c, i) => c.setAttribute("aria-pressed", String(i === current)));
+  if (current < 0) {
+    paint([], []);
+    $("said").textContent = "";
+    $("stepTitle").textContent = "Pick something you might say";
+    $("stepText").textContent = "Choose one of the requests above and step through it. Or click any box in the diagram to see what that part does.";
+    $("verdict").hidden = true;
+    $("prev").disabled = true;
+    $("next").disabled = false;
+    $("next").textContent = "Start";
+    $("steps").innerHTML = "";
+    return;
+  }
+  const s = SCENARIOS[current], st = s.steps[step];
+  paint(st.n, st.e);
+  $("said").textContent = `You: "${s.say}"`;
+  $("stepTitle").textContent = st.t;
+  $("stepText").textContent = st.x;
+  $("verdict").hidden = !st.v;
+  if (st.v) { $("verdict").className = `verdict ${st.v}`; $("verdict").textContent = VERDICT[st.v]; }
+  $("prev").disabled = step === 0 && current === 0;
+  const last = step === s.steps.length - 1;
+  $("next").textContent = last ? (current < SCENARIOS.length - 1 ? "Next example" : "Start over") : "Next";
+  $("next").disabled = false;
+  $("steps").innerHTML = s.steps.map((_, i) => `<i class="${i <= step ? "done" : ""}"></i>`).join("");
+}
+
+chips.forEach(c => c.addEventListener("click", () => { current = +c.dataset.i; step = 0; render(); }));
+$("next").addEventListener("click", () => {
+  if (current < 0) { current = 0; step = 0; }
+  else if (step < SCENARIOS[current].steps.length - 1) step++;
+  else if (current < SCENARIOS.length - 1) { current++; step = 0; }
+  else { current = -1; step = 0; }
+  render();
+});
+$("prev").addEventListener("click", () => {
+  if (current < 0) return;
+  if (step > 0) step--;
+  else if (current > 0) { current--; step = SCENARIOS[current].steps.length - 1; }
+  render();
+});
+
+nodes.forEach(g => g.addEventListener("click", () => {
+  const [title, text] = INFO[g.dataset.id];
+  current = -1; render();
+  paint([g.dataset.id], []);
+  $("said").textContent = "";
+  $("stepTitle").textContent = title;
+  $("stepText").textContent = text;
+  $("next").textContent = "Start the walkthrough";
+}));
+
+render();
+</script>
+</body>
+</html>

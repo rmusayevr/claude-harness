@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="530" viewBox="0 0 980 530" role="img" aria-label="Your request reaches a Claude session that always holds the rules and a one-line list of checklists. A matching checklist loads, Claude calls a tool, and three safety guards decide to allow, ask or block before it runs. A separate reviewer sees only the diff, and mistakes become lessons.">
+        <style>:root{
+  --bg: #121615; --panel: #1a201e; --ink: #e6ebe8; --muted: #9aa5a0; --line: #3a4541; --faint: #242c29;
+  --accent: #7db7df; --accent-soft: #1c2e3a; --good: #6cc48d; --good-soft: #17301f;
+  --warn: #e3a54f; --warn-soft: #33281a; --bad: #ee8272; --bad-soft: #3a1f1b; }
+svg{color:var(--ink);font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+.node rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+.node .t { font-size: 13px; font-weight: 600; fill: currentColor; }
+.node .s { font-size: 11px; fill: var(--muted); }
+.node .m { font-family: ui-monospace,Consolas,monospace; font-size: 11.5px; fill: currentColor; }
+.frame rect { fill: none; stroke: var(--line); stroke-dasharray: 4 4; }
+.frame .ft { font-size: 12px; font-weight: 600; fill: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.node.out-run .t { fill: var(--good); }
+.node.out-ask .t { fill: var(--warn); }
+.node.out-block .t { fill: var(--bad); }
+.edge path { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+.edge .l { font-size: 11px; fill: var(--muted); }
+.mk { fill: var(--muted); }
+.mk-on { fill: var(--accent); }
+.mk-good { fill: var(--good); } .mk-warn { fill: var(--warn); } .mk-bad { fill: var(--bad); }
+.edge path{marker-end:url(#a)}
+.node.out-run rect{stroke:var(--good)} .node.out-ask rect{stroke:var(--warn)} .node.out-block rect{stroke:var(--bad)}</style>
+        <rect width="980" height="530" rx="12" fill="#1a201e"/>
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-on" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-good" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-warn" d="M0,0 L10,5 L0,10 z"/></marker>
+          <marker id="a-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mk-bad" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+
+        <!-- frames -->
+        <g class="frame"><rect x="170" y="30" width="300" height="400" rx="12"/><text class="ft" x="186" y="52">Claude session</text></g>
+        <g class="frame"><rect x="700" y="200" width="260" height="150" rx="12"/><text class="ft" x="714" y="222">Safety guards</text></g>
+
+        <!-- edges -->
+        <g class="edge"><path d="M140 172 H165 V154 H188"/></g>
+        <g class="edge"><path d="M320 178 V200"/><text class="l" x="330" y="194">match</text></g>
+        <g class="edge"><path d="M320 250 V272"/><text class="l" x="330" y="266">follows it</text></g>
+        <g class="edge"><path d="M450 302 H518"/><text class="l" x="485" y="293" text-anchor="middle">calls a tool</text></g>
+        <g class="edge"><path d="M650 302 H698"/><text class="l" x="675" y="293" text-anchor="middle">first</text></g>
+        <g class="edge e-good"><path d="M740 350 V398"/><text class="l" x="746" y="380">allow</text></g>
+        <g class="edge e-warn"><path d="M830 350 V398"/><text class="l" x="836" y="380">ask</text></g>
+        <g class="edge e-bad"><path d="M920 350 V398"/><text class="l" x="926" y="380">deny</text></g>
+        <g class="edge"><path d="M880 200 V162"/><text class="l" x="886" y="186">logged</text></g>
+        <g class="edge"><path d="M730 200 V135 H652"/><text class="l" x="691" y="128" text-anchor="middle">asks GitHub</text></g>
+        <g class="edge"><path d="M300 330 V458"/><text class="l" x="292" y="420" text-anchor="end">diff only</text></g>
+        <g class="edge"><path d="M380 460 V332"/><text class="l" x="388" y="420">findings</text></g>
+        <g class="edge"><path d="M190 316 H80 V458"/><text class="l" x="88" y="436">lesson</text></g>
+
+        <!-- nodes -->
+        <g class="node"><rect x="20" y="140" width="120" height="64" rx="8"/><text class="t" x="80" y="167" text-anchor="middle">You</text><text class="s" x="80" y="185" text-anchor="middle">describe the task</text></g>
+
+        <g class="node"><rect x="190" y="64" width="260" height="48" rx="8"/><text class="t" x="206" y="85">Working rules</text><text class="s" x="206" y="101">CLAUDE.md block · always loaded</text></g>
+        <g class="node"><rect x="190" y="130" width="260" height="48" rx="8"/><text class="t" x="206" y="151">Checklist index</text><text class="s" x="206" y="167">one line per checklist · always loaded</text></g>
+        <g class="node"><rect x="190" y="202" width="260" height="48" rx="8"/><text class="t" x="206" y="223">The matching checklist</text><text class="s" x="206" y="239">loads only when it matches</text></g>
+        <g class="node"><rect x="190" y="274" width="260" height="56" rx="8"/><text class="t" x="206" y="298">Claude works</text><text class="s" x="206" y="315">reads, edits, runs commands</text></g>
+
+        <g class="node"><rect x="190" y="460" width="260" height="52" rx="8"/><text class="t" x="206" y="482">Fresh-eyes reviewer</text><text class="s" x="206" y="499">a separate Claude, no memory of the work</text></g>
+        <g class="node"><rect x="20" y="460" width="120" height="52" rx="8"/><text class="t" x="80" y="482" text-anchor="middle">Lessons</text><text class="s" x="80" y="499" text-anchor="middle">project, then global</text></g>
+
+        <g class="node"><rect x="520" y="274" width="130" height="56" rx="8"/><text class="t" x="585" y="298" text-anchor="middle">Tool call</text><text class="s" x="585" y="315" text-anchor="middle">Bash · Write · Edit</text></g>
+        <g class="node"><rect x="520" y="110" width="130" height="50" rx="8"/><text class="t" x="585" y="131" text-anchor="middle">GitHub</text><text class="s" x="585" y="147" text-anchor="middle">PR target and checks</text></g>
+        <g class="node"><rect x="800" y="110" width="160" height="50" rx="8"/><text class="t" x="880" y="131" text-anchor="middle">Decisions log</text><text class="s" x="880" y="147" text-anchor="middle">every ask and deny</text></g>
+
+        <g class="node"><rect x="714" y="232" width="232" height="30" rx="6"/><text class="m" x="726" y="251">guard-risky-ops</text><text class="s" x="934" y="251" text-anchor="end">files, git, deletes</text></g>
+        <g class="node"><rect x="714" y="270" width="232" height="30" rx="6"/><text class="m" x="726" y="289">guard-prod-ddl</text><text class="s" x="934" y="289" text-anchor="end">prod databases</text></g>
+        <g class="node"><rect x="714" y="308" width="232" height="30" rx="6"/><text class="m" x="726" y="327">guard-merge</text><text class="s" x="934" y="327" text-anchor="end">PR merges</text></g>
+
+        <g class="node out-run"><rect x="700" y="400" width="80" height="44" rx="8"/><text class="t" x="740" y="427" text-anchor="middle">Runs</text></g>
+        <g class="node out-ask"><rect x="790" y="400" width="80" height="44" rx="8"/><text class="t" x="830" y="427" text-anchor="middle">Asks you</text></g>
+        <g class="node out-block"><rect x="880" y="400" width="80" height="44" rx="8"/><text class="t" x="920" y="427" text-anchor="middle">Blocked</text></g>
+      </svg>
