@@ -75,7 +75,7 @@ Everything else happens without being asked.
 - [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 53 checklists, grouped by situation
 - [`GUIDE.md`](./GUIDE.md): the full guide, including when *not* to use it
 - [`TUTORIAL.md`](./TUTORIAL.md): a recorded run on a real project
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it
+- [`EXTENDING.md`](./EXTENDING.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it
 
 ---
 
