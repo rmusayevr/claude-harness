@@ -117,13 +117,14 @@ function segments(command, depth = 0) {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
-      if (c === '\\' && quote === '"') { cur += c + (s[i + 1] ?? ''); i++; continue; }
-      if (c === quote) quote = null;
+      // In "..." and in bash's $'...', a backslash escapes the next character.
+      if (c === '\\' && (quote === '"' || quote === '$')) { cur += c + (s[i + 1] ?? ''); i++; continue; }
+      if (c === (quote === '$' ? "'" : quote)) quote = null;
       cur += c;
       continue;
     }
     if (c === '\\') { cur += c + (s[i + 1] ?? ''); i++; continue; }
-    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === "'" || c === '"') { quote = c === "'" && cur.endsWith('$') ? '$' : c; cur += c; continue; }
     if (c === '#' && (cur === '' || /[\s;&|(]$/.test(cur))) {
       while (i + 1 < s.length && s[i + 1] !== '\n') i++; // comment: skip to end of line
       continue;
@@ -198,7 +199,7 @@ function segments(command, depth = 0) {
  */
 function plainSegments(command) {
   return String(command ?? '')
-    .split(/&&|\|\||[;|&\n]/)
+    .split(/&&|\|\||[;|\n]/) // exactly the baseline split: no lone &
     .map((s) => s.trim())
     .filter(Boolean);
 }

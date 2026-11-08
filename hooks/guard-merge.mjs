@@ -129,13 +129,14 @@ function segments(command, depth = 0) {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quote) {
-      if (c === '\\' && quote === '"') { cur += c + (s[i + 1] ?? ''); i++; continue; }
-      if (c === quote) quote = null;
+      // In "..." and in bash's $'...', a backslash escapes the next character.
+      if (c === '\\' && (quote === '"' || quote === '$')) { cur += c + (s[i + 1] ?? ''); i++; continue; }
+      if (c === (quote === '$' ? "'" : quote)) quote = null;
       cur += c;
       continue;
     }
     if (c === '\\') { cur += c + (s[i + 1] ?? ''); i++; continue; }
-    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === "'" || c === '"') { quote = c === "'" && cur.endsWith('$') ? '$' : c; cur += c; continue; }
     if (c === '#' && (cur === '' || /[\s;&|(]$/.test(cur))) {
       while (i + 1 < s.length && s[i + 1] !== '\n') i++; // comment: skip to end of line
       continue;
@@ -210,14 +211,11 @@ function segments(command, depth = 0) {
  */
 function plainSegments(command) {
   return String(command ?? '')
-    .split(/&&|\|\||[;|&\n]/)
+    .split(/&&|\|\||[;|\n]/) // exactly the baseline split: no lone &
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-function allSegments(command) {
-  return [...new Set([...segments(command), ...plainSegments(command)])];
-}
 
 
 function tokens(segment) {
@@ -394,19 +392,27 @@ export function decide(payload, deps = {}) {
     if (typeof command !== 'string' || !command) return null;
 
     const dir = deps.dir ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-    const ctx = {
-      config: deps.config === undefined ? loadConfig(dir) : deps.config,
-      lookup: deps.lookup ?? ghLookup,
-      cwd: deps.cwd ?? process.cwd(),
-    };
+    const config = deps.config === undefined ? loadConfig(dir) : deps.config;
+    const lookup = deps.lookup ?? ghLookup;
 
-    for (const segment of allSegments(command)) {
-      const t = tokens(segment);
-      if (!t.length) continue;
-      if (t[0] === 'cd' && t[1]) { ctx.cwd = resolve(ctx.cwd, t[1]); continue; }
-      const hit = checkMerge(t, segment, ctx) ?? checkPush(t, segment, ctx);
-      if (hit) return hit;
+    // Each split is walked on its own, with its own working directory and
+    // every `cd` in order. One merged, de-duplicated list applied the `cd`s
+    // of both splits to one directory (and dropped a repeated `cd ..`), so
+    // gh ran outside the repo, failed, and the merge was let through
+    // (sual-cavab PR #16, round 3). The stricter answer of the two wins.
+    let found = null;
+    for (const split of [segments(command), plainSegments(command)]) {
+      const ctx = { config, lookup, cwd: deps.cwd ?? process.cwd() };
+      for (const segment of split) {
+        const t = tokens(segment);
+        if (!t.length) continue;
+        if (t[0] === 'cd' && t[1]) { ctx.cwd = resolve(ctx.cwd, t[1]); continue; }
+        const hit = checkMerge(t, segment, ctx) ?? checkPush(t, segment, ctx);
+        if (hit && (!found || (hit.decision === 'deny' && found.decision !== 'deny'))) found = hit;
+        if (found?.decision === 'deny') return found;
+      }
     }
+    if (found) return found;
     return null;
   } catch {
     return null; // fail open
