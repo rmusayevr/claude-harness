@@ -17,16 +17,14 @@ first use.
   the user approves it. `guard-merge` enforces it (see `reference.md`).
 - `gh auth status` succeeds, the tree is clean, `git fetch origin`, and what
   `checks` need (a database) runs; if nothing in the repo starts it, say so.
-- If `base` is a protected branch (`main`, `master`, `production`…), set
-  `autoMerge` to false for this run: the loop gets PRs to ready and a human
-  merges them.
+- A protected `base` (`main`, `production`…) means `autoMerge` is false for
+  this run: the loop gets PRs to ready and a human merges them.
 
 ## 1. Pick the issue
 
-Take the first open, unparked issue from the queue (order rules in
-`reference.md`). Its comments hold earlier plans and the owner's decisions:
-**they are the spec.** If they contradict the issue body, the newest owner
-comment wins; if that is unclear, ask.
+Take the first open, unparked issue (order in `reference.md`). Its comments
+hold plans and the owner's decisions: **they are the spec**, the newest owner
+comment winning over the body. If that is unclear, ask.
 
 **Empty queue:** write an issue only from a problem the user named or a
 concrete finding from this run; never invent work. Create it with the queue
@@ -38,23 +36,23 @@ Size by the first rule that matches: **Risky** (touches a `risky` path from the
 config, or migrations), **Medium** (changes an API, documented behaviour, or
 more than 3 non-test files), **Small** (anything else). Never size down.
 
-- Small: go on.
+- A new package in the plan: run `review-a-dependency` before proposing it.
 - Medium and Risky: post the plan as an issue comment and **stop for approval**.
   While waiting, plan the next issues too, so the user approves them in one go.
-- Bigger than planned, once started: say so, re-size, re-plan.
+- Bigger than planned once started: say so (`scope-change`), re-size, re-plan.
 
 ## 3. Build
 
-Branch from `origin/<base>` (`feat/<topic>-YYYYMMDD`). A behaviour change gets a
-test; a bug fix gets a test that fails without the fix. Run every command in
-`checks` and read **its own** exit code (see Incidents). Then
-`read-your-own-diff`, push the branch and open the PR into `base` with the
-template from `reference.md`, including `Closes #<issue>`.
+Branch from `origin/<base>` (`feat/<topic>-YYYYMMDD`). Per `design-a-test`,
+every behaviour change gets a test; a fix gets one that fails without it.
+Run every command in `checks`; each passes only by **its own** exit code
+(`verify-for-real`). Commit per `write-commit`, then `read-your-own-diff`,
+push, and open the PR into `base` per `reference.md` with `Closes #<issue>`.
 
 ## 4. Review, triage, fix
 
 Delegate the PR diff, and nothing else, to the `fresh-eyes-reviewer` subagent;
-never review your own PR in this context. Run `triage-review` on what comes back.
+never review your own PR in this context. `triage-review` what comes back.
 Fix blockers, ask decisions, repeat until ready, or stop after three rounds.
 
 ## 5. Merge, confirm, then back to step 1
@@ -100,5 +98,7 @@ question with a recommendation first.
   no way to start one; a local service already held port 5432.
 - **sual-cavab (2026-11-08).** Merged PR branches piled up on GitHub and
   locally: the merge step had no `--delete-branch`.
+- **sual-cavab, day one.** Only skills this file names loaded; with six new
+  packages, `review-a-dependency` never did. Each step now names its skill.
 - **A second client project.** A suite was reported green because the shell's
   exit code was the trailing `echo`'s. The runner itself had failed.
