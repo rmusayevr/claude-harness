@@ -23,7 +23,7 @@ making it worse. If you only read one section, read
 
 ## What this is, and what it is not
 
-**It is a discipline layer.** 50 skills, 2 enforcement hooks, 1 review subagent,
+**It is a discipline layer.** 52 skills, 3 enforcement hooks, 1 review subagent,
 and a lesson vault, packaged as a Claude Code plugin you install into every
 project. It changes *how* work gets done — what gets checked, what gets
 verified, what gets refused — not *what* gets built.
@@ -57,7 +57,7 @@ you ruled out — made routine instead of occasional.
 - A repo you will not touch again next month
 - Prototypes where being wrong costs nothing and speed is the entire point
 
-The listing cost (~2,700 tokens per session) is real. On a five-file experiment
+The listing cost (~2,400 tokens per session) is real. On a five-file experiment
 it buys nothing.
 
 ---
@@ -104,7 +104,7 @@ Skills appear namespaced: `/harness:reproduce-first`.
 - Updates arrive by bumping the version and running `/plugin marketplace update`
 - Nothing is written into your project
 - **Stack packs in `rules/` are not loaded** — a plugin has no profile
-  mechanism, so you get the 50 stack-agnostic core skills only
+  mechanism, so you get the 52 stack-agnostic core skills only
 
 ### Mode B — copied into the project
 
@@ -174,7 +174,7 @@ occasion. It will refuse a hypothetical, and refusing is the feature.
 /harness:harness-audit
 ```
 
-Expect it to report 52 skills with no incident recorded. That is correct: the
+Expect it to report 52 of its 54 skills with no incident recorded. That is correct: the
 harness ships with reasoning, not with your history. Those fill as you use it.
 
 ---
@@ -200,14 +200,14 @@ almost nothing beyond `review-a-dependency` and `write-an-adr`.
 ### What it does cover
 
 Everything after that. Here is the full arc with the skills that fire at each
-stage.
+stage. `*` means you type it (`/harness:<name>`); the rest fire on their own.
 
 #### 1. Decisions before code
 
 | Moment | Skill |
 |---|---|
 | Choosing a library, framework, or base image | `review-a-dependency` |
-| A choice that will be expensive to reverse | `write-an-adr` |
+| A choice that will be expensive to reverse | `write-an-adr`* |
 | Before writing a helper that may already exist | `find-prior-art` |
 
 #### 2. Building
@@ -255,7 +255,7 @@ stage.
 
 | Moment | Skill |
 |---|---|
-| Canary, percentage, or staged rollout | `manage-a-rollout` |
+| Canary, percentage, or staged rollout | `manage-a-rollout`* |
 | The moment the deploy finishes | `smoke-test-a-deploy` |
 | An irreversible or externally visible step | `risky-op` |
 
@@ -264,11 +264,11 @@ stage.
 | Moment | Skill |
 |---|---|
 | Adding a cron or background task | `schedule-a-job` |
-| Documenting a recovery for on-call | `write-a-runbook` |
+| Documenting a recovery for on-call | `write-a-runbook`* |
 | Something is broken **right now** | `mitigate-first` |
 | A third party is down | `survive-a-dependency-outage` |
 | Investigating on a live system | `debug-in-production` |
-| After it is over | `incident-writeup` |
+| After it is over | `incident-writeup`* |
 
 #### 8. Debugging, throughout
 
@@ -329,7 +329,7 @@ system getting better.
 
 ## The skill catalogue, by situation
 
-All 50 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
+All 52 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 
 **Diagnosis (8)** — `reproduce-first` · `trace-a-failure` · `isolate-the-layer` ·
 `diagnose-a-hang` · `bisect-the-change` · `environment-divergence` ·
@@ -350,14 +350,16 @@ All 50 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 **Navigation (5)** — `land-in-a-new-repo` · `map-subsystem`* · `find-prior-art` ·
 `git-archaeology` · `locate-a-behavior`
 
-**Written artifacts (6)** — `write-commit` · `write-an-adr` · `handoff` ·
-`incident-writeup` · `write-a-runbook` · `write-a-bug-report`
+**Written artifacts (6)** — `write-commit` · `write-an-adr`* · `handoff` ·
+`incident-writeup`* · `write-a-runbook`* · `write-a-bug-report`
 
 **Operational risk (6)** — `risky-op` · `handle-secrets` · `mitigate-first` ·
-`manage-a-rollout` · `schedule-a-job` · `survive-a-dependency-outage`
+`manage-a-rollout`* · `schedule-a-job` · `survive-a-dependency-outage`
+
+**Delivery loop (2)** — `work-the-queue`* · `triage-review`
 
 **Harness (4)** — `promote-lesson` · `recall-lessons` · `harness-audit`* ·
-`harness-status`
+`harness-status`*
 
 **Stack packs (2, installer only)** — `stateful-markers` (backend) ·
 `loading-and-empty` (frontend)
@@ -395,15 +397,31 @@ or the ambient environment.
 Never denies: migrating production is legitimate during a deploy. The failure
 mode it prevents is doing it *unintentionally*.
 
+### `guard-merge`
+
+Matches `Bash`. Decides what `gh pr merge` may do, by asking `gh` for the
+PR's base branch and checks. That lookup is the harness's only network call,
+made only for a merge, and it fails open.
+
+Without `.claude/harness-loop.json` it **asks** only when a merge skips
+something: failing or pending checks, or `--admin`. A green merge into `main`
+on request says nothing.
+
+With the loop config present it **denies**: a merge into a protected branch or
+anything but the configured `base`, a merge over red or pending checks
+(`--auto` is fine), `--admin`, and a `git push` straight to the base or a
+protected branch. Unattended, an `ask` is either a hard block or a silent
+allow, so these rules are `deny`.
+
 ### Working with them
 
 - **A `deny` is not an obstacle to route around.** Deleting the remote branch to
   defeat a force-push denial, or writing to a temp file and moving it, converts
   a guard you trust into one that silently does not work. The `CLAUDE.md` block
   tells Claude this explicitly, and it holds in practice.
-- **Both fail open.** A parse error, a timeout, an unexpected payload — exit 0,
+- **All three fail open.** A parse error, a timeout, an unexpected payload — exit 0,
   allow. A wedged session is worse than a missed check.
-- **Both under-block deliberately.** `rm -rf node_modules` never prompts. A
+- **All three under-block deliberately.** `rm -rf node_modules` never prompts. A
   migration with no resolvable target never prompts. A guard that interrupts
   ordinary work gets switched off within a week, and then it protects nothing.
 
@@ -497,8 +515,8 @@ npm run listing-cost
 ```
 
 ```
-10684 chars across 50 billed skills (52 on disk)
-~2671 tokens, every session and every subagent
+9678 chars across 46 billed skills (54 on disk)
+~2420 tokens, every session and every subagent
 ```
 
 This is the number you pay whether or not you use a single skill — and it is
@@ -583,7 +601,7 @@ Same routing check, plus:
 
 - **Mechanical enforcement.** The hooks are not suggestions. A `.env` write is
   denied whether or not Claude "remembers" the rule.
-- **Cheap coverage.** 50 procedures cost ~2,700 tokens per session; the bodies
+- **Cheap coverage.** 46 automatic procedures cost ~2,400 tokens per session; the bodies
   cost nothing until used.
 - **Compounding.** Lessons route to the layer that fires in time, and graduate
   across projects on evidence rather than a hunch.
@@ -596,15 +614,15 @@ Same routing check, plus:
 
 ### What it costs, and where it is weak
 
-- **~2,700 tokens every session**, multiplied inside every subagent. Not free.
-- **No skill has an incident recorded yet.** All 52 ship as *reasoning*, not
+- **~2,400 tokens every session**, multiplied inside every subagent. Not free.
+- **Almost no skill has an incident recorded yet.** 52 of 54 ship as *reasoning*, not
   as earned history. That is honest, but it means the provenance discipline is
   currently aspirational — it becomes real as you use it.
 - **Stack packs are nearly empty.** `--profile backend` installs one extra
   skill. Packs should grow from real friction, not speculation, but today that
   means the profile mechanism is more designed than exercised.
-- **Only two hooks.** Enforcement covers destructive git/filesystem operations
-  and prod migrations. Everything else is prose, which is a request.
+- **Only three hooks.** Enforcement covers destructive git/filesystem operations,
+  prod migrations, and what an agent may merge. Everything else is prose, which is a request.
 - **No scaffolding.** See the gaps table above.
 - **Routing is good, not guaranteed.** 42/42 on tests, but Claude chooses; a
   weirdly-worded prompt can miss. Type the skill name when it matters.
@@ -650,8 +668,15 @@ harnesses into unreadable ones:
 | `/harness:recall-lessons` | Check for prior lessons before starting |
 | `/harness:harness-status` | Is the install healthy |
 | `/harness:harness-audit` | Turn the harness on itself |
+| `/harness:write-an-adr` | Record a decision that will be expensive to reverse |
+| `/harness:manage-a-rollout` | Plan a staged release with abort criteria first |
+| `/harness:write-a-runbook` | Document a recovery for on-call |
+| `/harness:incident-writeup` | Write up an outage or near miss |
+| `/harness:work-the-queue` | Run the GitHub issue loop until it needs you |
 
-Everything else fires on its own when the task matches.
+Everything else fires on its own when the task matches. The four document
+skills above are slash-only so they cost nothing per session; you decide when a
+document is worth writing.
 
 ### Installer
 
@@ -668,7 +693,7 @@ Flags: `--dry-run` · `--force` · `--claude-md block|sidecar|skip`
 ### Maintenance
 
 ```
-npm test                  # 93 tests: hooks, vault, installer
+npm test                  # 141 tests: hooks, vault, installer
 npm run audit             # mechanical self-audit
 npm run listing-cost      # budget and collisions
 node scripts/vault.mjs list --project-dir .
@@ -680,7 +705,7 @@ node scripts/vault.mjs list --project-dir .
 |---|---|
 | `.claude-plugin/plugin.json` | Plugin manifest — the only file in that directory |
 | `.claude-plugin/marketplace.json` | Catalog, so the repo works as a marketplace |
-| `skills/<name>/SKILL.md` | The 50 core skills |
+| `skills/<name>/SKILL.md` | The 52 core skills |
 | `rules/<stack>/<name>/SKILL.md` | Stack packs, installed selectively |
 | `agents/fresh-eyes-reviewer.md` | The review subagent |
 | `hooks/hooks.json` | **Single source of truth** for hook wiring |

@@ -1,6 +1,7 @@
 ---
 name: write-a-runbook
 description: Write an operational procedure someone can follow at 3am without having built the system, with a verification step after each action. Use when documenting a recovery, failover, rotation, or on-call response.
+disable-model-invocation: true
 ---
 
 # Write a runbook

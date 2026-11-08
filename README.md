@@ -1,139 +1,151 @@
 # harness
 
-A portable Claude Code plugin: on-demand workflow skills, mechanical enforcement
-hooks, and a lesson vault that survives between projects.
+[![test](https://github.com/rmusayevr/claude-harness/actions/workflows/test.yml/badge.svg)](https://github.com/rmusayevr/claude-harness/actions/workflows/test.yml)
 
-Start with [`GUIDE.md`](./GUIDE.md) — how to use it, when not to, and what it covers from first commit to production.
+**A Claude Code plugin that makes Claude check its work before it says it's
+done.** It reproduces bugs before fixing them, tests for real, reviews its own
+changes with fresh eyes, and refuses dangerous commands.
 
-See [`TUTORIAL.md`](./TUTORIAL.md) for a recorded run on a real project — including the rule that had to be narrowed because it blocked two build steps.
-
-Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) before extending it. It is the routing rule every
-addition gets checked against, and it explains why the volume lives where it
-does.
+You don't learn anything new to use it. Install it and keep talking to Claude
+the way you already do.
 
 ## Install
 
-From a git remote:
+In Claude Code:
 
 ```
 /plugin marketplace add rmusayevr/claude-harness
 /plugin install harness@harness
 ```
 
-Locally, for development:
+That's it. Needs Node 22 or newer.
+
+## Just say what's happening
+
+Claude picks the right checklist from what you describe. You never have to
+name one.
+
+| You say… | What Claude does |
+|---|---|
+| "This bug happens sometimes" | Reproduces it first, then fixes it, then proves the fix with a test |
+| "Add this feature" | Keeps the change small, says what it won't touch, tests it |
+| "Is this ready?" | Has a second Claude, with no memory of writing it, review the change |
+| "It's broken in production" | Stops the damage first, investigates after |
+| "I'm new to this code" | Maps how it fits together before changing anything |
+| "Why is this slow?" | Measures before optimizing anything |
+
+## Safety guards
+
+These run on every command, whether Claude remembers the rules or not.
+
+- **Blocked:** writing to `.env` and private keys, force-pushing to `main`,
+  `rm -rf /`.
+- **Asks you first:** `git reset --hard`, deleting non-build folders, deploys,
+  database migrations aimed at production, merging a PR with failing checks.
+
+If a guard blocks something it shouldn't, that's a bug. Please
+[open an issue](https://github.com/rmusayevr/claude-harness/issues).
+
+## Three commands worth knowing
+
+| Command | What it does |
+|---|---|
+| `/harness:promote-lesson` | "Remember this mistake." Turns it into a rule that fires before the same mistake next time |
+| `/harness:work-the-queue` | Works through your GitHub issues on its own: plan, build, PR, review, merge, next. Opt-in per project |
+| `/harness:harness-status` | Checks the install is working |
+
+Everything else happens without being asked.
+
+## Learn more
+
+- [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 52 checklists, grouped by situation
+- [`GUIDE.md`](./GUIDE.md): the full guide, including when *not* to use it
+- [`TUTORIAL.md`](./TUTORIAL.md): a recorded run on a real project
+- [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it
+
+---
+
+## For people extending it
+
+### Two ways to install
+
+The **plugin** (above) gives you the core skills, the guards and the review
+agent. The **installer** copies the harness into one project's `.claude/`
+folder instead, and is the only way to add the stack packs in `rules/`:
 
 ```
-claude --plugin-dir ./harness
+node install.mjs install   --profile core|backend|frontend|full --target <project>
+node install.mjs status    --target <project>
+node install.mjs repair    --target <project>
+node install.mjs update    --target <project>   # re-reads this checkout, no download
+node install.mjs uninstall --target <project>
 ```
 
-Into a project, profile-driven and manifest-tracked:
+Flags: `--dry-run`, `--force`, `--claude-md block|sidecar|skip`. Every file
+placed is recorded with a hash in `.claude/harness-manifest.json`, so the
+installer can tell a file you edited from a stale one from a missing one. Your
+edits are never overwritten without `--force`, and an existing `CLAUDE.md` is
+never overwritten at all: the harness block is appended between markers and
+removed cleanly on uninstall.
 
-```
-node install.mjs install   --profile core --target /path/to/project
-node install.mjs status    --target /path/to/project
-node install.mjs repair    --target /path/to/project
-node install.mjs update    --target /path/to/project   # re-reads this checkout, no download
-node install.mjs uninstall --target /path/to/project
-```
+### The issue loop
 
-Profiles: `core` (skills only) · `backend` · `frontend` · `full`.
+`/harness:work-the-queue` is opt-in through `.claude/harness-loop.json` (schema
+in [`skills/work-the-queue/reference.md`](./skills/work-the-queue/reference.md)).
+It picks the next issue, or writes one from a problem you named. It sizes the
+work, plans (bigger work waits for your approval), builds, opens a PR and has
+it reviewed fresh. It triages the findings with `triage-review`, fixes
+blockers, merges into the configured branch on green CI, waits for that
+branch's CI, then moves on. It stops only for business rules, new dependencies,
+work bigger than planned, or a broken base branch. Issues that need a person,
+like a deploy or a credential, get parked so the loop can move on.
 
-**The two delivery modes differ in one way.** Installed as a plugin you get the
-50 core skills in `skills/`; stack packs in `rules/` are *not* loaded, because a
-plugin has no profile mechanism to select them. `install.mjs` is what delivers
-packs, per profile. Use the plugin for the stack-agnostic core and the installer
-when you want a project to carry stack-specific rules too.
-Flags: `--dry-run`, `--force`, `--claude-md block|sidecar|skip`.
+With that file present, the `guard-merge` hook denies any merge that isn't a
+green PR into the configured branch. It never merges into `main`: if `main` is
+the base, the loop gets each PR to ready and you merge it.
 
-Everything placed is recorded in `.claude/harness-manifest.json` with a content
-hash, which is what lets the installer tell **"you edited this"** from **"this is
-stale"** from **"this is missing"** — three states that need three different
-answers. Locally-edited files are never overwritten or deleted without `--force`.
+### Lessons
 
-`CLAUDE.md` is never overwritten. If one exists, the harness block is *appended*
-with markers and removed cleanly on uninstall; your content is not touched. Use
-`--claude-md sidecar` to keep the file entirely untouched and get
-`CLAUDE.harness.md` instead (you then add `@CLAUDE.harness.md` yourself).
+`/harness:promote-lesson` refuses hypotheticals: a lesson needs the mistake
+that cost real work. It sharpens an existing rule rather than adding a
+near-duplicate, and puts the rule where it will fire in time. If the rule can
+be checked by machine, it proposes a guard and waits for approval. Lessons live
+in `<project>/.claude/lessons/`. One recorded in two or more projects moves to
+`~/.claude/harness/lessons/`.
 
-## Layout
+### Layout
 
 | Path | What |
 |---|---|
-| `.claude-plugin/plugin.json` | Plugin manifest. The **only** thing in this directory. |
-| `.claude-plugin/marketplace.json` | Catalog, so the repo can be added as a marketplace. |
-| `skills/` | Core skills. Installed by every profile. |
-| `rules/` | Stack packs — same format, installed selectively. See `rules/README.md`. |
-| `agents/` | Subagent definitions. |
-| `hooks/` | `hooks.json` plus one `.mjs` per guard and a `.test.mjs` beside it. |
-| `templates/` | `CLAUDE.md.template`, merged into a marked block on install. |
-| `install.mjs` | Profile-driven installer with manifest, repair, and uninstall. |
+| `skills/` | Core skills, one folder each |
+| `rules/` | Stack packs, installed only by profile |
+| `agents/` | The fresh-eyes review agent |
+| `hooks/` | The guards, `hooks.json`, and a `.test.mjs` beside each guard |
+| `templates/` | The `CLAUDE.md` block merged on install |
+| `install.mjs` | The installer |
+| `scripts/` | Lesson vault, self-audit, listing-cost report |
 
-## Tests
-
-```
-npm test
-```
-
-Every hook ships with a test beside it. The suite weights **false positives**
-heavily — a guard that over-blocks gets disabled within a week, and a disabled
-guard enforces nothing. Any new rule needs both a case it catches and an
-adjacent case it must let through.
-
-Note: `node --test hooks` does not work on Windows (Node resolves the bare
-directory as a module). Use the globbed form in `npm test`.
-
-## The learning loop
-
-`/promote-lesson` turns a mistake into a rule that fires *before* the same
-mistake next time. It refuses hypotheticals — a lesson needs the occasion that
-cost work — checks whether the lesson already exists and **sharpens** it rather
-than adding a near-duplicate, and routes by asking *"at what moment would this
-have had to be in front of me?"*, preferring the narrowest layer that still
-fires in time. When the rule is mechanically decidable it proposes the hook, its
-`deny`/`ask` call, and the false-positive case, then **waits for approval**.
-Promoting nothing is a valid and common outcome.
+### Tests and audit
 
 ```
-node scripts/vault.mjs check  --slug <s> --project-dir <project>
-node scripts/vault.mjs record --slug <s> --title "…" --layer <l> --body <file> --cost "…"
-node scripts/vault.mjs list   --project-dir <project>
+npm test               # every guard, the vault and the installer
+npm run audit          # the harness checks itself
+npm run listing-cost   # what the skill list costs per session
 ```
 
-Lessons live **per project** in `<project>/.claude/lessons/`. A lesson recorded
-in **2 or more distinct projects** graduates to the global vault at
-`~/.claude/harness/lessons/` (override with `HARNESS_VAULT`), carrying every
-project's occurrences with it. Repetition *within* one project never graduates —
-that is a project-specific problem, and copying it everywhere is how a shared
-vault fills with irrelevant context.
+Guard tests are weighted toward false positives: a guard that over-blocks gets
+switched off, and then it protects nothing. A new rule needs a case it catches
+and a nearby case it must let through.
 
-Everything is plain Markdown, including the index, which is a table you can read
-in a diff. Local only, no telemetry.
+### Two rules that keep it readable
 
-## Auditing the harness
+1. **Every rule names the mistake that bought it.** A rule that can't name a
+   cost is a guess.
+2. **A repeat sharpens the existing rule.** It never adds a near-duplicate.
 
-`/harness-audit` turns the harness on itself.
+### Local only
 
-```
-npm run audit                      # or: node scripts/audit.mjs --target <project>
-```
+Plain Markdown on disk, no telemetry, no service. The one network call is
+`guard-merge` asking `gh` about a PR you are merging.
 
-The script does what is decidable — description overlap, untested hooks and
-scripts, oversized bodies, `CLAUDE.md` budget, dead manifest entries. The skill
-body carries the judgment pass: does each skill earn its listing cost, do two
-skills overlap in *intent* (which word-scoring misses), does each rule name its
-cost, does anything in `CLAUDE.md` belong in a skill body.
-
-It never invents an incident to satisfy a check. A fabricated provenance is
-worse than a missing one, because later nobody can tell them apart.
-
-## The two rules that keep this readable
-
-1. **Every rule carries the incident that bought it.** A rule that cannot name a
-   cost is a guess. Guesses are what make large harnesses unreadable.
-2. **A rule that has failed twice reads as having failed twice.** The second
-   occurrence sharpens the existing entry; it never adds a near-duplicate bullet.
-
-## Local only
-
-Plain Markdown on disk. No telemetry, no network calls, no service. The lesson
-vault is inspectable in a diff or it is not a vault.
+MIT licensed. See [`LICENSE`](./LICENSE).

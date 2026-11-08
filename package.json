@@ -1,6 +1,6 @@
 {
   "name": "harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Portable Claude Code agent harness: on-demand skills, mechanical enforcement hooks, and a cross-project lesson vault.",

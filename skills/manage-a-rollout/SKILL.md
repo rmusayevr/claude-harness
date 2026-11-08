@@ -1,6 +1,7 @@
 ---
 name: manage-a-rollout
 description: Release a risky change progressively with abort criteria defined before it starts, so the decision to stop is mechanical rather than a judgment call under pressure. Use for canary, percentage, or staged releases.
+disable-model-invocation: true
 ---
 
 # Manage a rollout

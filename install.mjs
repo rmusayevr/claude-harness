@@ -25,6 +25,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRC = path.dirname(fileURLToPath(import.meta.url));
+// One version, from the plugin manifest; a second copy here went stale.
+const VERSION = JSON.parse(await readText(path.join(SRC, '.claude-plugin/plugin.json'))).version;
 const MANIFEST_NAME = '.claude/harness-manifest.json';
 const HOOK_FINGERPRINT = '/.claude/hooks/guard-';
 const BLOCK_START = '<!-- BEGIN harness';
@@ -138,6 +140,7 @@ async function buildPlan(profile) {
   for (const abs of await walk(path.join(SRC, 'hooks'))) {
     const f = path.basename(abs);
     if (!f.endsWith('.mjs')) continue;
+    if (f.endsWith('.test.mjs')) continue; // the harness's own tests, not the project's
     plan.push({ from: abs, to: `.claude/hooks/${f}`, kind: 'hook' });
   }
   // Skills invoke these by path, so they must travel with the install.
@@ -518,7 +521,7 @@ async function cmdInstall(opts) {
   const claudeMd = await applyClaudeMd(target, opts.claudeMd, force, dryRun, prior?.claudeMd);
 
   const manifest = {
-    harness: '0.1.0',
+    harness: VERSION,
     profile,
     command: `install --profile ${profile}`,
     installedAt: new Date().toISOString(),

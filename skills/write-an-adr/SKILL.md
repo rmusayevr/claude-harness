@@ -1,6 +1,7 @@
 ---
 name: write-an-adr
 description: Record an architectural decision as an immutable dated entry capturing the constraints and the rejected options, so it can be revisited on evidence rather than re-argued. Use when a choice will be expensive to reverse.
+disable-model-invocation: true
 ---
 
 # Write an ADR

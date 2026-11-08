@@ -1,6 +1,6 @@
 ---
 name: design-failure-behavior
-description: Decide per dependency what happens when it fails — fail fast, degrade, queue, or cache — instead of letting the default be an exception nobody planned for. Use when adding a call to anything that can be unavailable.
+description: Decide per dependency what happens when it fails (fail fast, degrade, queue or cache) instead of an exception nobody planned for. Use when adding a call to anything that can be unavailable.
 ---
 
 # Design failure behavior
