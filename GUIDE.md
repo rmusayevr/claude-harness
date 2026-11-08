@@ -417,7 +417,12 @@ allow, so these rules are `deny`.
 Matches `Skill` and `UserPromptSubmit`. Writes one line to
 `.claude/harness-usage.log` each time a harness skill loads, either because
 Claude picked it (`auto`) or because someone typed it (`typed`). It stores the
-skill name only, never your prompt, and prints nothing.
+skill name only, never your prompt, and prints nothing. Subagents are logged as
+`agent:<type>`, with the model when the call names one.
+
+It sees invocations, not use: a skill Claude applied from memory without loading
+it leaves no line, and a model pinned in an agent's own file is resolved after
+the hook runs, so the log cannot confirm which model a reviewer ran on.
 
 ```
 npm run usage                           # or: node scripts/usage.mjs --project-dir <project>
