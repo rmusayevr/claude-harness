@@ -124,11 +124,80 @@ const OFFLINE = /(--sql\b|--dry-run\b|--check\b|--plan\b|-n\b(?!\S))/;
 
 const unquote = (t) => t.replace(/^['"]|['"]$/g, '');
 
+/**
+ * Split a shell command into the segments that run independently: on `&&`,
+ * `||`, `;`, `|`, a lone `&` and newlines, but only OUTSIDE quotes, and
+ * skipping heredoc bodies.
+ *
+ * Splitting with a plain regex ignored quotes, so a `.env` path that was only
+ * text inside a quoted string (a loop list, a commit message) was judged as a
+ * command and denied. It also missed a lone `&`, so `rm -rf x & cp a .env`
+ * stayed one segment and the write was never checked. Both bought by
+ * sual-cavab PR #13. A heredoc fed to a shell (`bash <<EOF`) is therefore not
+ * inspected: under-blocking, like every other undecidable case here.
+ */
 function segments(command) {
-  return String(command ?? '')
-    .split(/&&|\|\||[;|\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const s = String(command ?? '');
+  const out = [];
+  let cur = '';
+  let quote = null;
+  let heredoc = null; // set by `<<TAG`; its body starts at the next newline
+  const push = () => {
+    if (cur.trim()) out.push(cur.trim());
+    cur = '';
+  };
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === '\\' && quote === '"') { cur += c + (s[i + 1] ?? ''); i++; continue; }
+      if (c === quote) quote = null;
+      cur += c;
+      continue;
+    }
+    if (c === '\\') { cur += c + (s[i + 1] ?? ''); i++; continue; }
+    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
+      const m = s.slice(i).match(/^<<(-?)\s*(['"]?)([A-Za-z_][\w-]*)\2/);
+      if (m) {
+        heredoc = { tag: m[3], strip: m[1] === '-' };
+        cur += m[0];
+        i += m[0].length - 1;
+        continue;
+      }
+    }
+    if (c === '\n') {
+      push();
+      if (heredoc) {
+        // Skip the body, up to and including the line that is exactly the tag.
+        let j = i + 1;
+        for (;;) {
+          const end = s.indexOf('\n', j);
+          const line = s.slice(j, end === -1 ? s.length : end);
+          const bare = heredoc.strip ? line.replace(/^\t+/, '') : line;
+          if (bare.trim() === heredoc.tag || end === -1) { i = end === -1 ? s.length : end; break; }
+          j = end + 1;
+        }
+        heredoc = null;
+      }
+      continue;
+    }
+    if (c === ';') { push(); continue; }
+    if (c === '|') {
+      push();
+      if (s[i + 1] === '|' || s[i + 1] === '&') i++;
+      continue;
+    }
+    if (c === '&') {
+      if (s[i + 1] === '&') { push(); i++; continue; }
+      // `2>&1`, `<&3` and `&>file` redirect; they do not separate commands.
+      if (cur.endsWith('>') || cur.endsWith('<') || s[i + 1] === '>') { cur += c; continue; }
+      push();
+      continue;
+    }
+    cur += c;
+  }
+  push();
+  return out;
 }
 
 function tokens(segment) {

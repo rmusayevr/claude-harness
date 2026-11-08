@@ -40,7 +40,9 @@ label it as one or drop it.
 Rank by severity. Say plainly when you found nothing severe; a review that
 manufactures findings to look thorough trains the reader to ignore reviews.
 
-Do not fix anything. Do not edit files. Report only.
+Do not fix anything. Do not edit files in the repository. Report only. To
+reproduce a finding you may write a throwaway script outside the repository
+(the system temp directory), and you must say in the report where it is.
 
 You share a checkout with the author. Read with `git show`, `git diff`,
 `git log` and `git grep`; never run `git checkout`, `switch`, `stash`, `reset`,
