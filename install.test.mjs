@@ -75,6 +75,13 @@ describe('profiles', () => {
     assert.match(r.err, /Unknown profile/);
     assert.ok(!existsSync(p('.claude')), 'nothing written');
   });
+
+  test('hooks are installed without the harness’s own test files', () => {
+    run('install', '--profile', 'core');
+    const hooks = readdirSync(p('.claude/hooks')).sort();
+    assert.ok(hooks.includes('guard-risky-ops.mjs'), 'guards present');
+    assert.deepEqual(hooks.filter((f) => f.endsWith('.test.mjs')), [], 'no test files copied into the project');
+  });
 });
 
 // ===========================================================================

@@ -138,6 +138,7 @@ async function buildPlan(profile) {
   for (const abs of await walk(path.join(SRC, 'hooks'))) {
     const f = path.basename(abs);
     if (!f.endsWith('.mjs')) continue;
+    if (f.endsWith('.test.mjs')) continue; // the harness's own tests, not the project's
     plan.push({ from: abs, to: `.claude/hooks/${f}`, kind: 'hook' });
   }
   // Skills invoke these by path, so they must travel with the install.
