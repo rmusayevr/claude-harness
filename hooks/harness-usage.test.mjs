@@ -25,6 +25,14 @@ describe('records', () => {
     assert.deepEqual(usage(skill('reproduce-first')), { skill: 'reproduce-first', via: 'auto' });
   });
 
+  test('a subagent, as agent:<type>', () => {
+    const agent = (tool, type) => ({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { subagent_type: type, prompt: 'review this' } });
+    assert.deepEqual(usage(agent('Agent', 'fresh-eyes-reviewer')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' });
+    assert.deepEqual(usage(agent('Task', 'fresh-eyes-reviewer')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' });
+    assert.equal(usage(agent('Agent', '')), null, 'no type, nothing to record');
+    assert.equal(usage(agent('Agent', '../x')), null);
+  });
+
   test('a slash command a person types, and only its name', () => {
     assert.deepEqual(usage(typed('/harness:start')), { skill: 'start', via: 'typed' });
     assert.deepEqual(usage(typed('/harness:map-subsystem billing and invoices')), { skill: 'map-subsystem', via: 'typed' });
