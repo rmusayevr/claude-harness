@@ -16,6 +16,9 @@
 - `CONTRIBUTING.md`, and issue forms for "a guard blocked normal work" and
   other bugs.
 
+### Fixed
+- An update no longer skips a skill just because `/promote-lesson` added an incident to it. Upstream wording is applied and every incident, local and upstream, is kept. Any other edit in the file still means "locally edited", skipped as before; `--force` still replaces the file.
+
 ### Changed
 - **Model pins**: `fresh-eyes-reviewer` runs on Opus, and so do `risky-op`,
   `review-for-data-loss`, `audit-permissions`, `migrate-data` and

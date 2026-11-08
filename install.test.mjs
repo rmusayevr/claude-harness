@@ -16,6 +16,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, rmSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INSTALL = path.join(HERE, 'install.mjs');
@@ -199,6 +200,83 @@ describe('local edits are not clobbered', () => {
     const r = run('install');
     assert.match(r.out, /1 skipped \(locally edited/);
     assert.match(read('.claude/skills/handoff/SKILL.md'), /my local tweak/);
+  });
+
+  describe('a recorded incident does not freeze the skill', () => {
+    const SKILL = '.claude/skills/handoff/SKILL.md';
+    const PLACEHOLDER = '_None recorded yet. `/promote-lesson` appends real occurrences here._';
+    const BULLET = '- **My project (2026-11).** Something that cost a day.';
+    const addIncident = () => writeFileSync(p(SKILL), read(SKILL).replace(PLACEHOLDER, BULLET));
+    // As if the file had been installed from an older upstream whose body differed.
+    const makeStale = () => {
+      const old = read(SKILL).replace('# Handoff', '# Handoff (old wording)');
+      writeFileSync(p(SKILL), old);
+      const m = manifest();
+      const entry = m.files.find((f) => f.to === SKILL);
+      const sha = (t) => createHash('sha256').update(t).digest('hex').slice(0, 16);
+      const strip = (t) => t.replace(/^## Incidents[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
+      entry.sha = sha(old);
+      entry.bodySha = sha(strip(old));
+      writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+    };
+
+    test('an update keeps the incident and is not reported as skipped', () => {
+      run('install');
+      addIncident();
+      const r = run('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.match(read(SKILL), /Something that cost a day/);
+      assert.doesNotMatch(read(SKILL), /None recorded yet/);
+      const again = read(SKILL);
+      run('install');
+      assert.equal(read(SKILL), again, 'a second update changes nothing');
+    });
+
+    test('an update still takes upstream wording and keeps the incident', () => {
+      run('install');
+      makeStale();
+      addIncident();
+      const r = run('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.doesNotMatch(read(SKILL), /old wording/);
+      assert.match(read(SKILL), /Something that cost a day/);
+    });
+
+    test('an install made before bodySha was recorded still merges', () => {
+      run('install');
+      addIncident();
+      const m = manifest();
+      for (const f of m.files) delete f.bodySha;
+      writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+      const r = run('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.match(read(SKILL), /Something that cost a day/);
+    });
+
+    test('a body edit next to an incident is still a local edit: skipped, nothing lost', () => {
+      run('install');
+      addIncident();
+      writeFileSync(p(SKILL), read(SKILL).replace('# Handoff', '# Handoff (my wording)'));
+      const r = run('install');
+      assert.match(r.out, /1 skipped \(locally edited/);
+      assert.match(read(SKILL), /my wording/);
+      assert.match(read(SKILL), /Something that cost a day/);
+    });
+
+    test('free text in the Incidents section is never dropped', () => {
+      run('install');
+      writeFileSync(p(SKILL), read(SKILL).replace(PLACEHOLDER, 'Remember to ask Dana first.'));
+      const r = run('install');
+      assert.match(r.out, /1 skipped \(locally edited/);
+      assert.match(read(SKILL), /ask Dana first/);
+    });
+
+    test('--force still replaces the file', () => {
+      run('install');
+      addIncident();
+      run('install', '--force');
+      assert.doesNotMatch(read(SKILL), /Something that cost a day/);
+    });
   });
 
   test('--force overwrites it', () => {

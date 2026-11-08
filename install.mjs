@@ -46,6 +46,40 @@ const PROFILES = {
 const rel = (p) => p.split(path.sep).join('/');
 const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16);
 
+// A skill's `## Incidents` section is where /promote-lesson records what a
+// project learned. Editing it makes the file "locally edited", which used to
+// freeze the whole skill against every later upstream change (sual-cavab, v1).
+// Incidents are merged instead of skipped: upstream text for everything else,
+// and every incident either side has.
+const INCIDENTS = /^## Incidents[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m;
+const INCIDENTS_HEAD = /^## Incidents[^\n]*\n/;
+const stripIncidents = (text) => text.replace(INCIDENTS, '');
+const incidentBullets = (text) => {
+  const m = text.match(INCIDENTS);
+  if (!m) return [];
+  return m[0].replace(INCIDENTS_HEAD, '').split(/\r?\n(?=- )/).map((b) => b.trim()).filter((b) => b.startsWith('- '));
+};
+/** True when the section holds nothing but the placeholder and "- " bullets, so merging cannot drop anything else. */
+function incidentsAreOnlyBullets(text) {
+  const m = text.match(INCIDENTS);
+  if (!m) return true;
+  const squash = (t) => t.replace(/\r/g, '').replace(/\n\s*\n/g, '\n').trim();
+  const body = squash(m[0].replace(INCIDENTS_HEAD, '').replace(/^_None recorded yet[^\n]*$/m, ''));
+  return body === squash(incidentBullets(text).join('\n'));
+}
+function mergeIncidents(upstream, local) {
+  const m = upstream.match(INCIDENTS);
+  if (!m) return upstream;
+  const bullets = incidentBullets(local);
+  for (const b of incidentBullets(upstream)) if (!bullets.includes(b)) bullets.push(b);
+  const head = m[0].match(INCIDENTS_HEAD)[0];
+  const body = bullets.length ? bullets.join('\n') + '\n' : m[0].slice(head.length).replace(/^\n+/, '');
+  return upstream.replace(INCIDENTS, () => head + '\n' + body);
+}
+/** What we record for a skill so a later update can tell "only Incidents changed". */
+const bodyShaOf = (item, content) =>
+  item.to.endsWith('/SKILL.md') ? { bodySha: sha(stripIncidents(content.toString('utf8'))) } : {};
+
 /**
  * Read UTF-8 text, stripping a byte-order mark.
  * PowerShell's Set-Content/Out-File write UTF-8 *with* BOM by default, so JSON
@@ -487,13 +521,30 @@ async function cmdInstall(opts) {
       const onDisk = sha(await readFile(abs));
       const known = priorByPath.get(item.to);
       const locallyEdited = known ? onDisk !== known.sha : onDisk !== want;
+      if (locallyEdited && !force && item.to.endsWith('/SKILL.md')) {
+        // Only the Incidents section differs from what we installed: merge it.
+        const local = (await readFile(abs)).toString('utf8');
+        const up = content.toString('utf8');
+        const onlyIncidents = known?.bodySha
+          ? sha(stripIncidents(local)) === known.bodySha
+          : stripIncidents(local) === stripIncidents(up);
+        if (onlyIncidents && incidentsAreOnlyBullets(local)) {
+          const merged = mergeIncidents(up, local);
+          if (merged !== local) {
+            if (!dryRun) await writeFile(abs, merged);
+            wrote++;
+          }
+          files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want, ...bodyShaOf(item, content) });
+          continue;
+        }
+      }
       if (locallyEdited && !force) {
         skipped.push(item.to);
-        files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: known?.sha ?? onDisk });
+        files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: known?.sha ?? onDisk, ...(known?.bodySha ? { bodySha: known.bodySha } : {}) });
         continue;
       }
       if (onDisk === want) {
-        files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want });
+        files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want, ...bodyShaOf(item, content) });
         continue;
       }
     }
@@ -503,7 +554,7 @@ async function cmdInstall(opts) {
       await writeFile(abs, content);
     }
     wrote++;
-    files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want });
+    files.push({ to: item.to, from: rel(path.relative(SRC, item.from)), kind: item.kind, sha: want, ...bodyShaOf(item, content) });
   }
 
   // Files the previous profile placed that this one does not: remove them.
