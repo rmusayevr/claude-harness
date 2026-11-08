@@ -29,6 +29,11 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- "Never weaker" is now checked, not claimed: a test runs every command from
+  the review rounds through the released guards and the current ones, and the
+  current answer must be at least as strict. The plain split is now exactly
+  the released one, and guard-merge follows each split's cd commands
+  separately.
 - The guards are never weaker than the plain command split they started
   with: they check both splits and the stricter answer wins. Review found the
   shell-aware splitter alone could miss commands the plain split caught. The
