@@ -130,7 +130,7 @@ for (const s of skills.filter((s) => s.lines > BODY_LIMIT))
 //     unattended loop is often one turn, so anything but an upgrade to opus
 //     downgrades whoever runs the harness on a stronger model. A forked skill's
 //     pin stays inside its subagent. See ARCHITECTURE.md, "Model pins".
-for (const s of skills.filter((s) => s.model && !s.forked && !/^(opus|inherit)$/.test(s.model)))
+for (const s of skills.filter((s) => s.model && !s.forked && !/^(opus|inherit)$/i.test(s.model)))
   add('high', 'model-downgrade', `${s.name} pins model "${s.model}" inline`,
     'Inline pins outlast the skill. Use opus, inherit, or context: fork.');
 

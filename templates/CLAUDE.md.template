@@ -22,6 +22,9 @@ every subagent.
 
 ### Changes
 
+- A project's own rules outrank a skill's defaults. If a skill says to use a
+  model, option or default the project's rules forbid, follow the project.
+
 - State what you will not touch before a multi-file change.
 - An improvement noticed mid-change goes in a separate commit or does not go in.
 - If the change crosses a boundary that was not planned, stop and say so rather

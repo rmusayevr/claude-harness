@@ -31,6 +31,13 @@ working, which has quietly drifted from the request. If the request said
 "invoices over 30 days", verify an invoice at 29, 30, and 31 days — not that
 "the date filter works".
 
+## Go through everything the user goes through
+
+Run the real entry point **through the proxy or gateway** the browser uses, and
+migrate the dev database before you start. Three bugs in one project showed only
+that way: a rewrite that dropped the trailing slash (every POST returned 500),
+a local database never migrated, and a slow `localhost` lookup on Windows.
+
 ## Reporting
 
 State what you ran and what came back. Paste the relevant output.
@@ -52,4 +59,6 @@ reported honestly, because the honest one gets checked.
 
 ## Incidents
 
-_None recorded yet. `/promote-lesson` appends real occurrences here._
+- **Client questions tracker (2026-11).** Unit tests passed while every sign-in
+  POST returned 500 through the frontend proxy. Only a request through the
+  proxy, as a browser sends it, found it.
