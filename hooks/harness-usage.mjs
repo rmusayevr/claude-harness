@@ -36,7 +36,11 @@ export function usage(payload) {
     if (event === 'PreToolUse' || (!event && payload?.tool_name)) {
       if (payload?.tool_name === 'Agent' || payload?.tool_name === 'Task') {
         const type = String(payload?.tool_input?.subagent_type ?? '').trim();
-        return NAME.test(type) ? { skill: `agent:${type}`, via: 'auto' } : null;
+        if (!NAME.test(type)) return null;
+        // Only a model the call names itself is visible here. A pin in the
+        // agent's own file is resolved later, and no hook sees the result.
+        const model = String(payload?.tool_input?.model ?? '').trim();
+        return NAME.test(model) ? { skill: `agent:${type}`, via: 'auto', model } : { skill: `agent:${type}`, via: 'auto' };
       }
       if (payload?.tool_name !== 'Skill') return null;
       const raw = String(payload?.tool_input?.skill ?? payload?.tool_input?.command ?? '').trim();

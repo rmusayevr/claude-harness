@@ -3,8 +3,8 @@
  * The lesson vault. Plain Markdown on local disk. No telemetry, no network.
  *
  *   node vault.mjs check   --slug <s> [--project-dir <d>]
- *   node vault.mjs record  --slug <s> --title <t> --layer <l> --body <file>
- *                          [--project-dir <d>] [--project <name>] [--cost <s>]
+ *   node vault.mjs record  --slug <s> --title <t> --layer <l> --rule "<one line>" --body <file>
+ *                          [--rule-file <f>] [--project-dir <d>] [--project <name>] [--cost <s>]
  *   node vault.mjs list    [--project-dir <d>]
  *   node vault.mjs show    --slug <s> [--project-dir <d>]
  *
@@ -34,17 +34,28 @@ const INDEX = path.join(VAULT, 'index.md');
 
 // ------------------------------------------------------------------ args
 
+const FLAGS = new Set(['--slug', '--title', '--layer', '--body', '--rule', '--rule-file', '--cost', '--project', '--project-dir', '--json']);
+
 function parseArgs(argv) {
   const o = { command: argv[0] ?? 'list', projectDir: process.cwd() };
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--slug') o.slug = argv[++i];
-    else if (a === '--title') o.title = argv[++i];
-    else if (a === '--layer') o.layer = argv[++i];
-    else if (a === '--body') o.body = argv[++i];
-    else if (a === '--cost') o.cost = argv[++i];
-    else if (a === '--project') o.project = argv[++i];
-    else if (a === '--project-dir') o.projectDir = path.resolve(argv[++i]);
+    // A flag that takes a value must not swallow the next flag when its value
+    // came out empty (a template substitution that produced nothing).
+    const value = () => {
+      const v = argv[i + 1];
+      if (v === undefined || FLAGS.has(v)) die(`${a} needs a value`);
+      return argv[++i];
+    };
+    if (a === '--slug') o.slug = value();
+    else if (a === '--title') o.title = value();
+    else if (a === '--layer') o.layer = value();
+    else if (a === '--body') o.body = value();
+    else if (a === '--rule') o.rule = value();
+    else if (a === '--rule-file') o.ruleFile = value();
+    else if (a === '--cost') o.cost = value();
+    else if (a === '--project') o.project = value();
+    else if (a === '--project-dir') o.projectDir = path.resolve(value());
     else if (a === '--json') o.json = true;
   }
   o.project ??= path.basename(o.projectDir);
@@ -108,7 +119,20 @@ async function writeIndex(rows) {
 const localPath = (dir, slug) => path.join(dir, '.claude', 'lessons', `${slug}.md`);
 const globalPath = (slug) => path.join(VAULT, `${slug}.md`);
 
-function newLesson({ slug, title, layer }) {
+const RULE_BLOCK = /^\*\*Rule:\*\*[\s\S]*?(?=\r?\n\r?\n## Occurrences)/m;
+const RULE_PLACEHOLDER = '_(sharpen this as occurrences accumulate';
+const oneLine = (rule) => rule.trim().replace(/\s*\r?\n\s*/g, ' ');
+/** The rule written in a lesson's head, or null when it is missing, empty or still the placeholder. */
+const ruleOf = (head) => {
+  const m = head.match(RULE_BLOCK);
+  if (!m || m[0].includes(RULE_PLACEHOLDER)) return null;
+  return m[0].replace(/^\*\*Rule:\*\*\s*/, '').trim() || null;
+};
+const hasRealRule = (head) => ruleOf(head) !== null;
+/** Replace the head's rule, or null when the head has no Rule line to replace. */
+const withRule = (text, rule) => (RULE_BLOCK.test(text) ? text.replace(RULE_BLOCK, () => `**Rule:** ${oneLine(rule)}`) : null);
+
+function newLesson({ slug, title, layer, rule }) {
   return `---
 slug: ${slug}
 layer: ${layer}
@@ -117,8 +141,7 @@ status: local
 
 # ${title}
 
-**Rule:** _(sharpen this as occurrences accumulate — do not add a second bullet
-for the same failure; rewrite this line so it covers both.)_
+**Rule:** ${oneLine(rule)}
 
 ## Occurrences
 
@@ -128,7 +151,7 @@ for the same failure; rewrite this line so it covers both.)_
 /** Split a lesson into its head (frontmatter, title, Rule) and its occurrences. */
 function parseLesson(text) {
   const marker = '## Occurrences';
-  const i = text.indexOf(marker);
+  const i = text.search(/^## Occurrences/m); // at a line start: a rule may mention the words
   if (i === -1) return { head: text.trimEnd(), occurrences: [] };
   const head = text.slice(0, i + marker.length);
   const occurrences = text
@@ -147,26 +170,30 @@ function parseLesson(text) {
  * destroys the one property the vault exists to preserve: a rule that failed
  * twice must read as having failed twice.
  */
-async function mergeForGlobal(row, fallbackText) {
-  let head = null;
+async function mergeForGlobal(row, fallbackText, sharpened = false) {
+  const heads = []; // candidates, best first
+  if (sharpened) heads.push(parseLesson(fallbackText).head); // this record rewrote the rule: it wins
+  if (existsSync(globalPath(row.slug))) heads.push(parseLesson(await readFile(globalPath(row.slug), 'utf8')).head);
   const seen = new Set();
   const all = [];
   for (const dir of row.sources ?? []) {
     const p = localPath(dir, row.slug);
     if (!existsSync(p)) continue;
     const parsed = parseLesson(await readFile(p, 'utf8'));
-    head ??= parsed.head;
+    heads.push(parsed.head);
     for (const occ of parsed.occurrences) {
       if (seen.has(occ)) continue;
       seen.add(occ);
       all.push(occ);
     }
   }
-  if (head === null) {
+  if (heads.length === 0) {
     const parsed = parseLesson(fallbackText);
-    head = parsed.head;
+    heads.push(parsed.head);
     for (const occ of parsed.occurrences) if (!seen.has(occ)) (seen.add(occ), all.push(occ));
   }
+  // A lesson graduates with a rule: the first candidate that has one.
+  const head = heads.find(hasRealRule) ?? heads[0];
   // Chronological by the date in "### YYYY-MM-DD — project".
   all.sort((a, b) => (a.slice(4, 14) < b.slice(4, 14) ? -1 : a.slice(4, 14) > b.slice(4, 14) ? 1 : 0));
   return head.replace(/^status: local$/m, 'status: global') + '\n\n' + all.join('\n\n') + '\n';
@@ -225,6 +252,17 @@ function overlaps(a, b) {
   return shared >= 2 || (shared >= 1 && Math.min(A.size, B.size) <= 2);
 }
 
+/** The rule an earlier project already wrote for this slug: the global copy's, else the first local one. */
+async function existingRule(row) {
+  const files = [globalPath(row.slug), ...(row.sources ?? []).map((dir) => localPath(dir, row.slug))];
+  for (const f of files) {
+    if (!existsSync(f)) continue;
+    const rule = ruleOf(parseLesson(await readFile(f, 'utf8')).head);
+    if (rule) return rule;
+  }
+  return null;
+}
+
 async function cmdRecord(o) {
   if (!o.slug) die('record needs --slug');
   if (!o.body) die('record needs --body <file containing the occurrence>');
@@ -241,11 +279,35 @@ async function cmdRecord(o) {
   }
   if (o.layer) row.layer = o.layer;
 
-  // Per-project lesson file: create, or append the occurrence.
+  // The rule: given with --rule / --rule-file, or taken from what is already known.
+  if (o.ruleFile) {
+    if (!existsSync(o.ruleFile)) die(`rule file not found: ${o.ruleFile}`);
+    o.rule = await readFile(o.ruleFile, 'utf8');
+  }
+  if (o.rule !== undefined && !o.rule.trim()) die('--rule is empty: say what to do, or never do, in one line');
+  const sharpened = Boolean(o.rule);
+
+  // Per-project lesson file: create, or append the occurrence. Every refusal
+  // comes before the first write, so a refused record leaves nothing behind.
   const lp = localPath(o.projectDir, o.slug);
-  await mkdir(path.dirname(lp), { recursive: true });
-  let text = existsSync(lp) ? await readFile(lp, 'utf8') : newLesson({ slug: o.slug, title: o.title || o.slug, layer: row.layer });
+  let text;
+  if (existsSync(lp)) {
+    text = await readFile(lp, 'utf8');
+    if (o.rule) {
+      text = withRule(text, o.rule); // sharpening, as the NOTE below asks
+      if (text === null) die(`${path.relative(o.projectDir, lp)} has no "**Rule:**" line to rewrite; add one by hand`);
+    } else if (!hasRealRule(text)) {
+      die('this lesson has no rule yet: record needs --rule "<one line>"');
+    }
+  } else {
+    // A second project meets the rule the first one wrote, and starts from it.
+    const known = o.rule ? null : await existingRule(row);
+    if (!o.rule && !known) die('record needs --rule "<one line: what to do or never do>"; the incident goes in --body');
+    text = newLesson({ slug: o.slug, title: o.title || o.slug, layer: row.layer, rule: o.rule || known });
+    if (known) console.log(`  rule:        taken from the existing lesson; pass --rule to rewrite it so it covers both`);
+  }
   text = text.trimEnd() + '\n\n' + occurrenceEntry({ project: o.project, cost: o.cost, body: bodyText });
+  await mkdir(path.dirname(lp), { recursive: true });
   await writeFile(lp, text, 'utf8');
 
   row.occurrences += 1;
@@ -262,7 +324,7 @@ async function cmdRecord(o) {
     await mkdir(VAULT, { recursive: true });
     // Rebuild from every source each time, so the global copy is always the
     // union of what the projects know rather than a running append.
-    await writeFile(globalPath(o.slug), await mergeForGlobal(row, text), 'utf8');
+    await writeFile(globalPath(o.slug), await mergeForGlobal(row, text, sharpened), 'utf8');
   }
 
   await writeIndex(rows);

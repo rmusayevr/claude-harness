@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- The usage log records a subagent's model when the call names one, and the guide says what the log cannot see.
 - **Usage tracking**: the `harness-usage` hook records each skill that loads
   (skill name only, never the prompt) in `.claude/harness-usage.log`, and
   `npm run usage` reports what was used and what never was. Subagents are
@@ -17,6 +18,7 @@
   other bugs.
 
 ### Changed
+- Wording from the first full project run: `review-for-data-loss` asks for one lock order tested with threads; `verify-for-real` runs through the proxy and migrates the dev database first; the CLAUDE.md block says a project's rules outrank a skill's defaults; `work-the-queue` says a Small issue needs no plan comment. The model-pin check ignores case.
 - **Model pins**: `fresh-eyes-reviewer` runs on Opus, and so do `risky-op`,
   `review-for-data-loss`, `audit-permissions`, `migrate-data` and
   `handle-secrets`. The rest inherit your session's model, so you can run the
@@ -37,6 +39,7 @@
 
 ### Fixed
 - An update no longer skips a skill just because `/promote-lesson` added an incident to it. Upstream wording is applied, upstream's own incidents follow upstream (reworded or retracted), and the ones a person added stay. It merges only when that provably loses nothing: both files have an `## Incidents` section holding only the exact placeholder and bullets, and nothing else differs from what was installed. Anything else is "locally edited", skipped as before; `--force` still replaces the file. An install from before the manifest recorded this cannot tell an incident from an edit: the update says so, and `--merge-incidents` states that incidents are your only edit.
+- `vault.mjs record` takes `--rule` (or `--rule-file`) and writes it into the lesson's head, so a lesson no longer graduates to the global vault with a placeholder instead of a rule. The first record of a slug requires it; a later project starts from the existing rule, and a rewrite in any project reaches the global copy. Global copies built before this change keep their placeholder until the slug is next recorded.
 - The plain split's fragments are now read exactly as the released guard read
   them, so the guards cannot be weaker than the release by construction. A
   fuzz test (8,000 generated commands) compares every guard with the release

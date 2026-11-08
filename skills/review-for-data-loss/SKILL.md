@@ -38,6 +38,10 @@ Not "is it correct" — assume it is wrong and ask what survives.
   wider, an idle-timeout that now catches active records.
 - **Uniqueness collisions.** An upsert keyed on something not actually unique
   merges two distinct entities into one, and the second one is gone.
+- **Row locks added to fix a race.** Two transactions taking the same locks in
+  different orders deadlock, and a single-threaded test never shows it. Fix one
+  global order (for example by primary key) and test it with real threads on the
+  real database.
 - **Encoding and precision.** Unicode through a latin-1 column, money in a
   float, timestamps losing the zone. Corruption is data loss that passes tests.
 
@@ -58,4 +62,6 @@ nightly snapshot, losing up to 24h of writes, here is the command" is.
 
 ## Incidents
 
-_None recorded yet. `/promote-lesson` appends real occurrences here._
+- **Client questions tracker (2026-11).** A row-lock fix for a race introduced a
+  deadlock; only a threaded test on PostgreSQL showed it. Lock order is now a
+  review question.

@@ -29,6 +29,10 @@ describe('records', () => {
     const agent = (tool, type) => ({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { subagent_type: type, prompt: 'review this' } });
     assert.deepEqual(usage(agent('Agent', 'fresh-eyes-reviewer')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' });
     assert.deepEqual(usage(agent('Task', 'fresh-eyes-reviewer')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' });
+    const withModel = (model) => ({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'fresh-eyes-reviewer', model } });
+    assert.deepEqual(usage(withModel('sonnet')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto', model: 'sonnet' }, 'a model the call names is recorded');
+    assert.deepEqual(usage(withModel('')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' }, 'no model named: nothing invented');
+    assert.deepEqual(usage(withModel('../x; rm')), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' }, 'a model that is not a plain name is dropped');
     assert.equal(usage(agent('Agent', '')), null, 'no type, nothing to record');
     assert.equal(usage(agent('Agent', '../x')), null);
   });
