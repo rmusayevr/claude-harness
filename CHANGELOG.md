@@ -16,9 +16,6 @@
 - `CONTRIBUTING.md`, and issue forms for "a guard blocked normal work" and
   other bugs.
 
-### Fixed
-- An update no longer skips a skill just because `/promote-lesson` added an incident to it. Upstream wording is applied and every incident, local and upstream, is kept. Any other edit in the file still means "locally edited", skipped as before; `--force` still replaces the file.
-
 ### Changed
 - **Model pins**: `fresh-eyes-reviewer` runs on Opus, and so do `risky-op`,
   `review-for-data-loss`, `audit-permissions`, `migrate-data` and
@@ -39,6 +36,7 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- An update no longer skips a skill just because `/promote-lesson` added an incident to it. Upstream wording is applied and every incident, local and upstream, is kept. Any other edit in the file still means "locally edited", skipped as before; `--force` still replaces the file.
 - The plain split's fragments are now read exactly as the released guard read
   them, so the guards cannot be weaker than the release by construction. A
   fuzz test (8,000 generated commands) compares every guard with the release
