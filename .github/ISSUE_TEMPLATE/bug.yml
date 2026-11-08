@@ -1,0 +1,22 @@
+name: Something else is wrong
+description: A skill misfired, the installer failed, or the docs are wrong.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked Claude, and what it did. Paste the output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Node version, harness version (from /harness:harness-status), plugin or installer.
