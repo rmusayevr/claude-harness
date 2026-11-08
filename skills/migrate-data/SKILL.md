@@ -1,6 +1,7 @@
 ---
 name: migrate-data
 description: Roll out a schema or data-shape change in reversible phases so that old and new code can run simultaneously. Use when changing a column, an index, a serialized format, or a stored contract.
+model: opus
 ---
 
 # Migrate data

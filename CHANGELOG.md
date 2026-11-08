@@ -17,6 +17,13 @@
   other bugs.
 
 ### Changed
+- **Model pins**: `fresh-eyes-reviewer` runs on Opus, and so do `risky-op`,
+  `review-for-data-loss`, `audit-permissions`, `migrate-data` and
+  `handle-secrets`. The rest inherit your session's model, so you can run the
+  loop on Sonnet and still get Opus where a miss is expensive. Pins only go up;
+  `npm run audit` flags a downgrade. See ARCHITECTURE.md, "Model pins only go up".
+- `work-the-queue` runs the matching Opus-pinned review before building a
+  Risky issue.
 - `review-a-dependency` checks release age first: pin the newest release at
   least two weeks old.
 - `work-the-queue` confirms what the checks need (a database) is running

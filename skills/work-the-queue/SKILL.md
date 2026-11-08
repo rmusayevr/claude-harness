@@ -37,6 +37,8 @@ config, or migrations), **Medium** (changes an API, documented behaviour, or
 more than 3 non-test files), **Small** (anything else). Never size down.
 
 - A new package in the plan: run `review-a-dependency` before proposing it.
+- Risky: before building, run what the path calls for (`audit-permissions`,
+  `migrate-data`, `review-for-data-loss`). They are pinned to Opus.
 - Medium and Risky: post the plan as an issue comment and **stop for approval**.
   While waiting, plan the next issues too, so the user approves them in one go.
 - Bigger than planned once started: say so (`scope-change`), re-size, re-plan.

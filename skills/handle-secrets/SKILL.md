@@ -1,6 +1,7 @@
 ---
 name: handle-secrets
 description: Respond to an exposed credential by rotating first, and keep secrets out of code, logs, and error messages. Use when a key is committed, printed, pasted, or sent anywhere it should not have been.
+model: opus
 ---
 
 # Handle secrets
