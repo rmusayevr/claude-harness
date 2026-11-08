@@ -255,6 +255,50 @@ describe('compound commands: the most severe decision wins', () => {
   test('an ask next to harmless segments is still an ask', () => {
     expect(bash('rm -rf old-src && echo done && ls'), 'ask', 'ask plus noise');
   });
+
+  // The next three were found by the fresh-eyes review of sual-cavab PR #13,
+  // reproduced against decide() before the fix.
+  test('a deny among several files in ONE write is not hidden by an ask', () => {
+    const got = expect(bash('tee config/production.json .env'), 'deny', 'tee to prod config and .env');
+    assert.equal(got.rule, 'write-dotenv-via-bash');
+    expect(bash("printf 'X=1' | tee server.pem .env"), 'deny', 'credential file then .env');
+  });
+
+  test('a lone & separates commands too', () => {
+    const got = expect(bash('rm -rf core & cp .env.example .env'), 'deny', 'backgrounded rm then .env');
+    assert.equal(got.rule, 'write-dotenv-via-bash');
+  });
+
+  test('& inside a redirect does not split, and backgrounding alone is fine', () => {
+    expect(bash('npm test 2>&1 | tee test.log'), 'allow', '2>&1');
+    expect(bash('npm run build &> build.log'), 'allow', '&>');
+    expect(bash('sleep 1 & wait'), 'allow', 'background job');
+  });
+});
+
+describe('quoted text and heredocs are text, not commands', () => {
+  test('the false positive: a .env path inside a quoted loop list', () => {
+    expect(
+      bash('for c in "printf X | tee config/production.json .env" "rm -rf core & cp .env.example .env"; do echo "$c"; done'),
+      'allow',
+      'operators inside double quotes',
+    );
+    expect(bash("git commit -m 'stop writing > .env from scripts; use tee'"), 'allow', 'operators inside single quotes');
+  });
+
+  test('a heredoc body is not split into commands', () => {
+    expect(bash("cat > probe.mjs <<'EOF'\nconst c = 'tee .env';\nrm -rf /\nEOF\nnode probe.mjs"), 'allow', 'quoted heredoc');
+    expect(bash('cat > notes.txt <<-EOF\n\tcp .env.example .env\n\tEOF\necho done'), 'allow', '<<- with tabs');
+  });
+
+  test('commands after the heredoc are still checked', () => {
+    expect(bash("cat > a.txt <<'EOF'\nhello\nEOF\ncp .env.example .env"), 'deny', 'write after the heredoc');
+  });
+
+  test('a real write outside the quotes is still seen', () => {
+    expect(bash('echo "harmless text" > .env'), 'deny', 'quoted content, real redirect');
+    expect(bash("echo 'a && b' && cp x .env"), 'deny', 'quoted operator, real second command');
+  });
 });
 
 describe('allow (false-positive guard)', () => {

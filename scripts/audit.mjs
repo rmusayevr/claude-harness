@@ -4,8 +4,9 @@
  *
  *   node scripts/audit.mjs [--target <installed-project>] [--json] [--verbose] [--threshold 0.4]
  *
- * Everything here is decidable from files on disk, so per ARCHITECTURE.md it
- * belongs in a script rather than in prose asking Claude to check carefully.
+ * Everything here is decidable from files on disk, so per the harness's
+ * ARCHITECTURE.md it belongs in a script rather than in prose asking Claude
+ * to check carefully.
  * The judgment calls — is this rule actually earning its place, do these two
  * skills genuinely overlap in intent — stay in harness-audit/SKILL.md.
  *

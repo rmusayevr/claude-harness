@@ -29,6 +29,12 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- The guards split commands with a regex that ignored quotes and heredocs,
+  and missed a lone `&`. A `.env` path that was only quoted text was denied,
+  and `rm -rf x & cp a .env` was not checked. Commands are now split only
+  outside quotes, heredoc bodies are skipped, and `&` separates commands.
+- One write to several files (`tee config/production.json .env`) asked about
+  the first and never checked `.env`. The most severe target now wins.
 - `guard-risky-ops` returned the first match in a compound command, so an
   `ask` early in it hid a `deny` later. It now checks every part and the most
   severe decision wins. Found when `rm -rf … && cp .env.example .env` wrote
