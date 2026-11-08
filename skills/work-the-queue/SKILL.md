@@ -13,10 +13,8 @@ first use.
 ## 0. Before the first issue
 
 - Read `.claude/harness-loop.json`. If it is missing, propose one from
-  `reference.md` (ask for the base branch, the queue label, the check commands
-  and the risky paths) and stop until the user approves it. The `guard-merge`
-  hook reads the same file: with it present, a merge into anything but `base`,
-  or over red checks, is denied.
+  `reference.md` (base branch, queue label, checks, risky paths) and stop until
+  the user approves it. `guard-merge` enforces it (see `reference.md`).
 - `gh auth status` succeeds, the working tree is clean, `git fetch origin`.
 - If `base` is a protected branch (`main`, `master`, `production`…), set
   `autoMerge` to false for this run: the loop gets PRs to ready and a human
@@ -88,18 +86,18 @@ question with a recommendation first.
 
 ## Long runs
 
-The issue is the memory. Before context runs low, comment on the current issue
-where you are and what is next (`handoff`), so a new session can start from
-`/work-the-queue` alone instead of a pasted prompt.
+The issue is the memory. Before context runs low, comment on the issue where
+you are and what is next (`handoff`); a new session resumes from that alone.
 
 ## Incidents
 
-- **Client web project (2026-11).** The loop ran for a week from a pasted page of standing
-  rules. A reviewer subagent ran `git checkout` and left the shared checkout on
-  a detached HEAD; the next commit went nowhere. Reviewers are now read-only.
-- **Same project.** Tasks merged into `staging` stayed open: `Closes #n` only acts on
-  the default branch. The owner had to ask for them to be closed.
-- **Same project.** One flaky frontend test failed unrelated PRs; rerunning the failed
-  job once was the agreed fix, and a second failure counts as real.
-- **A second client project.** A suite was reported green because the shell's exit code was
-  the trailing `echo`'s. The runner itself had failed.
+- **Client web project (2026-11).** The loop ran for a week from a pasted page
+  of standing rules. A reviewer subagent ran `git checkout` and left the shared
+  checkout on a detached HEAD; the next commit went nowhere. Reviewers are now
+  read-only.
+- **Same project.** Tasks merged into `staging` stayed open: `Closes #n` only
+  acts on the default branch. The owner had to ask for them to be closed.
+- **Same project.** One flaky frontend test failed unrelated PRs; rerunning
+  the failed job once was the agreed fix, and a second failure counts as real.
+- **A second client project.** A suite was reported green because the shell's
+  exit code was the trailing `echo`'s. The runner itself had failed.
