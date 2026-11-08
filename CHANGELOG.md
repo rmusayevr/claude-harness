@@ -24,6 +24,10 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- `guard-risky-ops` returned the first match in a compound command, so an
+  `ask` early in it hid a `deny` later. It now checks every part and the most
+  severe decision wins. Found when `rm -rf … && cp .env.example .env` wrote
+  `.env` after the ask was auto-approved.
 - Uninstall removed harness hooks only from `PreToolUse`; it now cleans every
   event. The installer recognises `harness-*` hooks as its own, not only
   `guard-*`.
