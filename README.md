@@ -141,6 +141,7 @@ in `<project>/.claude/lessons/`. One recorded in two or more projects moves to
 npm test               # every guard, the vault and the installer
 npm run audit          # the harness checks itself
 npm run listing-cost   # what the skill list costs per session
+npm run usage          # which skills a project actually used
 ```
 
 Guard tests are weighted toward false positives: a guard that over-blocks gets

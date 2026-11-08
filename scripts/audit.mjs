@@ -133,7 +133,7 @@ for (const h of hookFiles.filter((f) => f.endsWith('.mjs') && !f.endsWith('.test
 
 // 6. Executable scripts with no test. Reporting tools are exempt (they have no
 //    decision to get wrong); anything that WRITES to a project is not.
-const REPORT_ONLY = new Set(['audit.mjs', 'listing-cost.mjs']);
+const REPORT_ONLY = new Set(['audit.mjs', 'listing-cost.mjs', 'usage.mjs']);
 const scriptNames = (await walk(path.join(ROOT, 'scripts'))).map((f) => path.basename(f));
 const rootScripts = (await readdir(ROOT, { withFileTypes: true }))
   .filter((e) => e.isFile() && e.name.endsWith('.mjs'))

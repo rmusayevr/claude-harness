@@ -28,7 +28,9 @@ const SRC = path.dirname(fileURLToPath(import.meta.url));
 // One version, from the plugin manifest; a second copy here went stale.
 const VERSION = JSON.parse(await readText(path.join(SRC, '.claude-plugin/plugin.json'))).version;
 const MANIFEST_NAME = '.claude/harness-manifest.json';
-const HOOK_FINGERPRINT = '/.claude/hooks/guard-';
+// Every hook the harness ships is named guard-* or harness-*. Matching on the
+// prefix, not just the directory, leaves a project's own hooks alone.
+const HOOK_FINGERPRINTS = ['/.claude/hooks/guard-', '/.claude/hooks/harness-'];
 const BLOCK_START = '<!-- BEGIN harness';
 const BLOCK_END = '<!-- END harness';
 
@@ -144,7 +146,7 @@ async function buildPlan(profile) {
     plan.push({ from: abs, to: `.claude/hooks/${f}`, kind: 'hook' });
   }
   // Skills invoke these by path, so they must travel with the install.
-  for (const f of ['vault.mjs', 'audit.mjs', 'listing-cost.mjs']) {
+  for (const f of ['vault.mjs', 'audit.mjs', 'listing-cost.mjs', 'usage.mjs']) {
     plan.push({ from: path.join(SRC, 'scripts', f), to: `.claude/harness/scripts/${f}`, kind: 'script' });
   }
   return plan;
@@ -226,7 +228,7 @@ async function harnessHookEvents() {
 
 const isOurs = (group) =>
   Array.isArray(group?.hooks) &&
-  group.hooks.some((h) => typeof h?.command === 'string' && h.command.includes(HOOK_FINGERPRINT));
+  group.hooks.some((h) => typeof h?.command === 'string' && HOOK_FINGERPRINTS.some((f) => h.command.includes(f)));
 
 /**
  * `priorRecord` carries the createdByUs flag forward across re-installs.
@@ -275,13 +277,16 @@ async function unwireSettings(target, record, dryRun) {
   } catch {
     return `${record.path} is not valid JSON — left untouched, remove the harness hook by hand`;
   }
-  const before = settings.hooks?.PreToolUse?.length ?? 0;
-  if (settings.hooks?.PreToolUse) {
-    settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter((g) => !isOurs(g));
-    if (settings.hooks.PreToolUse.length === 0) delete settings.hooks.PreToolUse;
-    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+  // Every event, not just PreToolUse: the usage hook also sits on
+  // UserPromptSubmit, and an uninstall that only cleaned one event left it behind.
+  let removed = 0;
+  for (const event of Object.keys(settings.hooks ?? {})) {
+    const before = settings.hooks[event]?.length ?? 0;
+    settings.hooks[event] = (settings.hooks[event] ?? []).filter((g) => !isOurs(g));
+    removed += before - settings.hooks[event].length;
+    if (settings.hooks[event].length === 0) delete settings.hooks[event];
   }
-  const removed = before - (settings.hooks?.PreToolUse?.length ?? 0);
+  if (settings.hooks && Object.keys(settings.hooks).length === 0) delete settings.hooks;
   if (dryRun) return null;
 
   // Only delete the file if we created it AND nothing else ended up in it.

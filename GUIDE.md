@@ -413,6 +413,21 @@ anything but the configured `base`, a merge over red or pending checks
 protected branch. Unattended, an `ask` is either a hard block or a silent
 allow, so these rules are `deny`.
 
+### `harness-usage` (records, never decides)
+
+Matches `Skill` and `UserPromptSubmit`. Writes one line to
+`.claude/harness-usage.log` each time a harness skill loads, either because
+Claude picked it (`auto`) or because someone typed it (`typed`). It stores the
+skill name only, never your prompt, and prints nothing.
+
+```
+npm run usage                           # or: node scripts/usage.mjs --project-dir <project>
+```
+
+The report lists what was used and, more usefully, what never was. A skill in
+the listing that hasn't loaded in weeks of real work is the first candidate to
+cut or make slash-only. Add `.claude/harness-usage.log` to `.gitignore`.
+
 ### Working with them
 
 - **A `deny` is not an obstacle to route around.** Deleting the remote branch to

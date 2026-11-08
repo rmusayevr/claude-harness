@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- **Usage tracking**: the `harness-usage` hook records each skill that loads
+  (skill name only, never the prompt) in `.claude/harness-usage.log`, and
+  `npm run usage` reports what was used and what never was.
 - **How it works diagram**: an interactive walkthrough at
   https://rmusayevr.github.io/claude-harness/ (from `docs/index.html`), and a
   static light/dark copy at the top of the README. `npm run diagram`
@@ -13,9 +16,17 @@
   other bugs.
 
 ### Changed
+- `npm run audit` folds a repeated finding into one line; `--verbose` lists
+  them all.
+- `promote-lesson` and `work-the-queue` are under 100 body lines.
 - CI uses `actions/checkout@v5` and `actions/setup-node@v5`, which run on
   Node 24; v4 ran on the retired Node 20.
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
+
+### Fixed
+- Uninstall removed harness hooks only from `PreToolUse`; it now cleans every
+  event. The installer recognises `harness-*` hooks as its own, not only
+  `guard-*`.
 
 ## 0.2.0 (2026-11-08)
 

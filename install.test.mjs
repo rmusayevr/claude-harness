@@ -146,7 +146,8 @@ describe('settings.json', () => {
     const s = JSON.parse(read('.claude/settings.json'));
     assert.equal(s.env.ACME_REGION, 'eu-west-1');
     assert.equal(s.hooks.PostToolUse[0].hooks[0].command, 'echo mine');
-    assert.equal(s.hooks.PreToolUse.length, 2, 'both harness guards added');
+    assert.equal(s.hooks.PreToolUse.length, 3, 'the guard groups and the usage recorder added');
+    assert.equal(s.hooks.UserPromptSubmit.length, 1, 'usage recorder on typed slash commands');
   });
 
   test('a settings.json with a UTF-8 BOM is read, not rejected', () => {
@@ -173,6 +174,20 @@ describe('settings.json', () => {
     const s = JSON.parse(read('.claude/settings.json'));
     const ours = s.hooks.PreToolUse.filter((g) => g.hooks.some((h) => h.command.includes('/.claude/hooks/guard-')));
     assert.equal(ours.length, 2, 'each guard appears exactly once after a reinstall');
+    assert.equal(s.hooks.UserPromptSubmit.length, 1, 'the usage hook is not duplicated either');
+  });
+
+  test('uninstall removes harness hooks from every event and keeps the project’s own', () => {
+    mkdirSync(p('.claude'), { recursive: true });
+    const mine = { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/my-check.mjs"' };
+    writeFileSync(p('.claude/settings.json'), JSON.stringify({
+      hooks: { UserPromptSubmit: [{ hooks: [mine] }], PreToolUse: [{ matcher: 'Bash', hooks: [mine] }] },
+    }));
+    run('install');
+    assert.equal(run('uninstall').code, 0);
+    const s = JSON.parse(read('.claude/settings.json'));
+    assert.deepEqual(s.hooks.UserPromptSubmit, [{ hooks: [mine] }], 'only the project hook is left');
+    assert.deepEqual(s.hooks.PreToolUse, [{ matcher: 'Bash', hooks: [mine] }]);
   });
 });
 
