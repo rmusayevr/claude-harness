@@ -10,6 +10,11 @@
  * Two routes in, because skills arrive two ways:
  *   PreToolUse, tool `Skill`   Claude loaded a skill itself      via: "auto"
  *   UserPromptSubmit `/name`   a person typed the slash command  via: "typed"
+ *   PreToolUse, `Agent`/`Task` a subagent ran, as agent:<type>   via: "auto"
+ *
+ * Subagents count because a skill can delegate its core step to one: the
+ * fresh-eyes review in sual-cavab's loop ran as a subagent and the log never
+ * showed it.
  *
  * It never decides and never speaks: no stdout at all. On UserPromptSubmit,
  * stdout would be added to Claude's context, which is exactly the per-event
@@ -29,6 +34,10 @@ export function usage(payload) {
   try {
     const event = payload?.hook_event_name;
     if (event === 'PreToolUse' || (!event && payload?.tool_name)) {
+      if (payload?.tool_name === 'Agent' || payload?.tool_name === 'Task') {
+        const type = String(payload?.tool_input?.subagent_type ?? '').trim();
+        return NAME.test(type) ? { skill: `agent:${type}`, via: 'auto' } : null;
+      }
       if (payload?.tool_name !== 'Skill') return null;
       const raw = String(payload?.tool_input?.skill ?? payload?.tool_input?.command ?? '').trim();
       const skill = raw.replace(/^\//, '').replace(/^harness:/, '').split(/\s/)[0];

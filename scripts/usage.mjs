@@ -43,6 +43,11 @@ function shipped() {
     for (const e of readdirSync(path.join(ROOT, 'rules'), { withFileTypes: true }))
       if (e.isDirectory()) add(path.join(ROOT, 'rules', e.name), e.name);
   if (!out.size) add(path.resolve(ROOT, '..', 'skills'), 'core'); // installed copy
+  // Agents ship as agents/<name>.md and are logged as agent:<name>.
+  for (const dir of [path.join(ROOT, 'agents'), path.resolve(ROOT, '..', 'agents')]) {
+    if (!existsSync(dir)) continue;
+    for (const f of readdirSync(dir)) if (f.endsWith('.md')) out.set(`agent:${f.slice(0, -3)}`, { group: 'agent', slashOnly: false });
+  }
   return out;
 }
 

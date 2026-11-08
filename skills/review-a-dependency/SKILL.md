@@ -20,6 +20,11 @@ load-bearing, and the cost you are choosing is the cost of *removing* it.
 
 ## Signals worth checking, in order of predictive value
 
+0. **Release age, before anything else.** Pin the newest release that is at
+   least two weeks old (`npm view <pkg> time --json`, `pip index versions`
+   plus the release date on PyPI). A days-old release has had no time for its
+   bugs, or a compromised publish, to be noticed; a fresh `x.0.0` is both.
+   Newer only with a named reason, such as a security fix you need.
 1. **Transitive count.** `npm ls --all | wc -l` or equivalent. One package with
    forty dependencies is forty supply-chain surfaces and forty things that can
    break your build independently.
@@ -56,4 +61,7 @@ considered or accidental, and that determines whether anyone dares change it.
 
 ## Incidents
 
-_None recorded yet. `/promote-lesson` appends real occurrences here._
+- **sual-cavab #2 (2026-11-08).** The frontend plan proposed exact pins of
+  the latest `vitest` (6 days old), `@vitejs/plugin-react` (6 days) and
+  `jsdom` 31.0.0 (a new major, 3 days old). Nobody had checked the dates;
+  the newest releases at least two weeks old were 4.1.12, 6.1.2 and 30.1.3.
