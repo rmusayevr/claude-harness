@@ -33,7 +33,7 @@ test('every skill the loop names exists, and the loop still names it', () => {
 test('UI work is parked, not a stop, until the owner picks; a one-element fix is not UI work', () => {
   const bullet = loop.match(/- UI work[\s\S]*?(?=\n- )/)?.[0] ?? '';
   assert.match(bullet, /`design-direction`/);
-  assert.match(bullet, /park every\s+UI issue that waits on the pick/);
+  assert.match(bullet, /park every\s+UI issue waiting on the pick/);
   assert.match(bullet, /the rest of the queue goes on/);
   assert.match(bullet, /not copy, a bug, or a one-element fix/);
   assert.match(loop, /a design file or pick\) and blocks/, 'the park rule names a design pick');
