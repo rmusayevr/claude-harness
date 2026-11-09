@@ -472,6 +472,90 @@ describe('local edits are not clobbered', () => {
       });
     });
 
+    describe('round 3', () => {
+      const WC = '.claude/skills/write-commit/SKILL.md';
+      const SM = '.claude/skills/stateful-markers/SKILL.md';
+      const X = '- **Proj (2026-11).** CS-64 shipped a marker nothing cleared.';
+
+      test('--force for another file does not turn a person’s bullet into upstream’s', () => {
+        local(H, (t) => t.replace(PH, X));
+        upstream('handoff', (t) => t.replace(PH, X));
+        runS('install');
+        local(WC, (t) => t.replace('# Write a commit', '# Write a commit\n\nOur edit.'));
+        runS('install', '--force');
+        upstream('handoff', (t) => t.replace(X, PH));
+        runS('install');
+        assert.match(read(H), /CS-64 shipped a marker/);
+      });
+
+      test('a file that reads like upstream’s but holds a person’s bullet is not overwritten by a plain update', () => {
+        local(H, (t) => t.replace(PH, X));
+        upstream('handoff', (t) => t.replace(PH, X));
+        runS('install');
+        upstream('handoff', (t) => t.replace(X, PH).replace('# Handoff', '# Handoff v2'));
+        runS('install');
+        assert.match(read(H), /CS-64 shipped a marker/);
+        assert.match(read(H), /Handoff v2/);
+      });
+
+      test('a skipped file with no manifest entry stays skipped (uninstall, then reinstall)', () => {
+        local(H, (t) => t.replace(PH, '- MINE-1 cost a day.'));
+        runS('uninstall');
+        assert.match(read(H), /MINE-1/);
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        assert.match(runS('install').out, /1 skipped/);
+        assert.match(runS('install').out, /1 skipped/, 'still skipped the second time');
+        assert.match(read(H), /MINE-1/);
+        assert.doesNotMatch(read(H), /Handoff v2/);
+      });
+
+      test('a pack skill kept across a profile switch stays protected', () => {
+        runS('install', '--profile', 'backend');
+        local(SM, (t) => t.replace(/_None recorded yet[^\n]*_/, '- PACK-MINE cost a day.'));
+        runS('install', '--profile', 'core');
+        const pack = path.join(src, 'rules', 'backend', 'stateful-markers', 'SKILL.md');
+        writeFileSync(pack, readFileSync(pack, 'utf8').replace(/^# (.*)$/m, '# $1 v2'));
+        runS('install', '--profile', 'backend');
+        runS('update', '--profile', 'backend');
+        assert.match(read(SM), /PACK-MINE/);
+      });
+
+      test('a person who deleted or reworded an upstream bullet has made an edit: skipped, not undone', () => {
+        upstream('handoff', (t) => t.replace(PH, '- UP one.'));
+        runS('install');
+        local(H, (t) => t.replace('- UP one.', '- UP one, reworded by us.'));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /skipped/);
+        assert.match(read(H), /reworded by us/);
+        assert.doesNotMatch(read(H), /Handoff v2/);
+        local(H, (t) => t.replace('- UP one, reworded by us.', PH));
+        assert.match(runS('install').out, /skipped/);
+        assert.doesNotMatch(read(H), /- UP one\./);
+      });
+
+      test('the --merge-incidents hint is not shown when it cannot help', () => {
+        local(H, (t) => t.replace(PH, '- OLD-1 cost a day.'));
+        const m = manifest();
+        for (const f of m.files) {
+          delete f.bodySha;
+          delete f.incidents;
+        }
+        writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+        upstream('handoff', (t) => t.replace('## Incidents', '## Occurrences'));
+        assert.doesNotMatch(runS('install').out, /--merge-incidents/);
+        assert.doesNotMatch(runS('install', '--merge-incidents').out, /--merge-incidents/);
+      });
+
+      test('a merge names the skill it updated around an incident', () => {
+        local(H, (t) => t.replace(PH, '- NAMED-1 cost a day.'));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /around the incidents you recorded/);
+        assert.match(r.out, /handoff\/SKILL\.md/);
+      });
+    });
+
     test('when another section follows, its blank line is kept', () => {
       upstream('handoff', (t) => t + '\n## After\n\nText.\n');
       runS('install');
