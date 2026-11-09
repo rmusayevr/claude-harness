@@ -100,7 +100,8 @@ graduates them. Repetition within one project never graduates.
 ## 6. Apply it where it was routed
 
 Editing the target layer is the actual point; recording it is bookkeeping. For a
-skill body, append to that skill's `## Incidents` section. For `CLAUDE.md`, add
+skill body, append a `- ` bullet to that skill's `## Incidents` section (the
+installer keeps only bullets through an update). For `CLAUDE.md`, add
 one line inside the harness block. For a hook, wait for approval per step 4.
 
 Then tell the user, in one line each: what was recorded, where it will fire, and

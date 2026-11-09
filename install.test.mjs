@@ -12,10 +12,11 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, rmSync, readdirSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const INSTALL = path.join(HERE, 'install.mjs');
@@ -37,6 +38,14 @@ const skillNames = () => readdirSync(p('.claude/skills')).sort();
 const EDIT = '\n<!-- my local tweak -->\n';
 
 // ===========================================================================
+// A copy of the harness itself, so a test can change what "upstream" says.
+function makeSource() {
+  const src = mkdtempSync(path.join(tmpdir(), 'harness-src-'));
+  for (const e of ['install.mjs', 'skills', 'agents', 'hooks', 'scripts', 'templates', 'rules', '.claude-plugin', 'package.json'])
+    cpSync(path.join(HERE, e), path.join(src, e), { recursive: true });
+  return src;
+}
+
 describe('profiles', () => {
   test('core installs no stack packs', () => {
     assert.equal(run('install', '--profile', 'core').code, 0);
@@ -199,6 +208,362 @@ describe('local edits are not clobbered', () => {
     const r = run('install');
     assert.match(r.out, /1 skipped \(locally edited/);
     assert.match(read('.claude/skills/handoff/SKILL.md'), /my local tweak/);
+  });
+
+  describe('a recorded incident does not freeze the skill', () => {
+    const SKILL = '.claude/skills/handoff/SKILL.md';
+    const PLACEHOLDER = '_None recorded yet. `/promote-lesson` appends real occurrences here._';
+    const BULLET = '- **My project (2026-11).** Something that cost a day.';
+    const addIncident = () => writeFileSync(p(SKILL), read(SKILL).replace(PLACEHOLDER, BULLET));
+    // As if the file had been installed from an older upstream whose body differed.
+    const makeStale = () => {
+      const old = read(SKILL).replace('# Handoff', '# Handoff (old wording)');
+      writeFileSync(p(SKILL), old);
+      const m = manifest();
+      const entry = m.files.find((f) => f.to === SKILL);
+      const sha = (t) => createHash('sha256').update(t).digest('hex').slice(0, 16);
+      const strip = (t) => t.replace(/^## Incidents[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
+      entry.sha = sha(old);
+      entry.bodySha = sha(strip(old));
+      writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+    };
+
+    test('an update keeps the incident and is not reported as skipped', () => {
+      run('install');
+      addIncident();
+      const r = run('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.match(read(SKILL), /Something that cost a day/);
+      assert.doesNotMatch(read(SKILL), /None recorded yet/);
+      const again = read(SKILL);
+      run('install');
+      assert.equal(read(SKILL), again, 'a second update changes nothing');
+    });
+
+    test('an update still takes upstream wording and keeps the incident', () => {
+      run('install');
+      makeStale();
+      addIncident();
+      const r = run('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.doesNotMatch(read(SKILL), /old wording/);
+      assert.match(read(SKILL), /Something that cost a day/);
+    });
+
+    test('an install made before bodySha was recorded still merges', () => {
+      run('install');
+      addIncident();
+      const m = manifest();
+      for (const f of m.files) delete f.bodySha;
+      writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+      const r = run('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.match(read(SKILL), /Something that cost a day/);
+    });
+
+    test('a body edit next to an incident is still a local edit: skipped, nothing lost', () => {
+      run('install');
+      addIncident();
+      writeFileSync(p(SKILL), read(SKILL).replace('# Handoff', '# Handoff (my wording)'));
+      const r = run('install');
+      assert.match(r.out, /1 skipped \(locally edited/);
+      assert.match(read(SKILL), /my wording/);
+      assert.match(read(SKILL), /Something that cost a day/);
+    });
+
+    test('free text in the Incidents section is never dropped', () => {
+      run('install');
+      writeFileSync(p(SKILL), read(SKILL).replace(PLACEHOLDER, 'Remember to ask Dana first.'));
+      const r = run('install');
+      assert.match(r.out, /1 skipped \(locally edited/);
+      assert.match(read(SKILL), /ask Dana first/);
+    });
+
+    test('--force still replaces the file', () => {
+      run('install');
+      addIncident();
+      run('install', '--force');
+      assert.doesNotMatch(read(SKILL), /Something that cost a day/);
+    });
+  });
+
+  describe('incident merge: what a fresh-eyes review tried', () => {
+    const H = '.claude/skills/handoff/SKILL.md';
+    const MAP = '.claude/skills/map-subsystem/SKILL.md';
+    const PH = '_None recorded yet. `/promote-lesson` appends real occurrences here._';
+    let src;
+    const runS = (...args) => {
+      const r = spawnSync(process.execPath, [path.join(src, 'install.mjs'), ...args, '--target', proj], { encoding: 'utf8' });
+      return { code: r.status, out: r.stdout ?? '', err: r.stderr ?? '' };
+    };
+    const upstream = (name, fn) => {
+      const f = path.join(src, 'skills', name, 'SKILL.md');
+      writeFileSync(f, fn(readFileSync(f, 'utf8')));
+    };
+    const local = (rel, fn) => writeFileSync(p(rel), fn(read(rel)));
+    beforeEach(() => {
+      src = makeSource();
+      runS('install');
+    });
+
+    test('upstream drops its Incidents section: the incident is kept, the file is skipped', () => {
+      local(H, (t) => t.replace(PH, '- LOST-1 cost a day.'));
+      upstream('handoff', (t) => t.replace('## Incidents', '## Occurrences'));
+      const r = runS('install');
+      assert.match(r.out, /skipped/);
+      assert.match(read(H), /LOST-1 cost a day/);
+    });
+
+    test('a skill that ships without the section keeps a section the person added', () => {
+      local(MAP, (t) => t.trimEnd() + '\n\n## Incidents\n\n- MAP-LOST-1 cost a day.\n');
+      upstream('map-subsystem', (t) => t + '\nAn upstream line.\n');
+      runS('install');
+      assert.match(read(MAP), /MAP-LOST-1/);
+      local(MAP, (t) => t);
+    });
+
+    test('...even with no upstream change and the section in the middle', () => {
+      local(MAP, (t) => t.replace('## Output', '## Incidents\n\n- MAP-LOST-2 cost a day.\n\n## Output'));
+      runS('install');
+      assert.match(read(MAP), /MAP-LOST-2/);
+    });
+
+    test('text on the placeholder line is a local edit, not dropped', () => {
+      local(H, (t) => t.replace(PH, PH + ' Ask Dana before any handoff.\n\n- K one.'));
+      const r = runS('install');
+      assert.match(r.out, /skipped/);
+      assert.match(read(H), /Ask Dana before any handoff/);
+    });
+
+    test('upstream can reword and retract its own incident; the person’s bullet stays', () => {
+      upstream('handoff', (t) => t.replace(PH, '- UP original wording.'));
+      runS('install');
+      assert.match(read(H), /UP original wording/);
+      local(H, (t) => t.trimEnd() + '\n- OWN stays.\n');
+      upstream('handoff', (t) => t.replace('UP original wording', 'UP corrected wording'));
+      runS('install');
+      assert.match(read(H), /UP corrected wording/);
+      assert.doesNotMatch(read(H), /UP original wording/);
+      assert.match(read(H), /OWN stays/);
+      upstream('handoff', (t) => t.replace('- UP corrected wording.', PH));
+      runS('install');
+      assert.doesNotMatch(read(H), /UP corrected wording/);
+      assert.match(read(H), /OWN stays/);
+    });
+
+    test('an install from before bodySha: skipped with a hint, then --merge-incidents, then it flows', () => {
+      local(H, (t) => t.replace(PH, '- OLD-1 cost a day.'));
+      const m = manifest();
+      for (const f of m.files) {
+        delete f.bodySha;
+        delete f.incidents;
+      }
+      writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+      upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+      const r1 = runS('install');
+      assert.match(r1.out, /--merge-incidents/);
+      assert.doesNotMatch(read(H), /Handoff v2/);
+      runS('install', '--merge-incidents');
+      assert.match(read(H), /Handoff v2/);
+      assert.match(read(H), /OLD-1 cost a day/);
+      assert.ok(manifest().files.find((f) => f.to === H).bodySha, 'recorded now');
+      upstream('handoff', (t) => t.replace('# Handoff v2', '# Handoff v3'));
+      runS('install');
+      assert.match(read(H), /Handoff v3/);
+      assert.match(read(H), /OLD-1 cost a day/);
+    });
+
+    test('a section the person deleted is not put back', () => {
+      local(H, (t) => t.replace(/## Incidents[\s\S]*$/, ''));
+      const r = runS('install');
+      assert.match(r.out, /skipped/);
+      assert.doesNotMatch(read(H), /## Incidents/);
+    });
+
+    test('trailing whitespace on a bullet does not freeze the skill', () => {
+      local(H, (t) => t.replace(PH, '- WS one,  \n  line two.  \n\n- WS two.'));
+      upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+      const r = runS('install');
+      assert.doesNotMatch(r.out, /skipped/);
+      assert.match(read(H), /Handoff v2/);
+      assert.match(read(H), /WS two/);
+    });
+
+    test('a CRLF file does not end up with mixed line endings', () => {
+      local(H, (t) => t.replace(PH, '- CR one.').replace(/\n/g, '\r\n'));
+      upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+      runS('install');
+      assert.match(read(H), /Handoff v2/);
+      assert.match(read(H), /CR one/);
+      assert.doesNotMatch(read(H), /(?<!\r)\n/, 'every line ending is CRLF');
+    });
+
+    describe('round 2', () => {
+      const WC = '.claude/skills/write-commit/SKILL.md';
+      const WQ = '.claude/skills/work-the-queue/SKILL.md';
+      const oldInstall = () => {
+        const m = manifest();
+        for (const f of m.files) {
+          delete f.bodySha;
+          delete f.incidents;
+        }
+        writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+      };
+
+      test('--merge-incidents never touches a skill the update did not list', () => {
+        local(H, (t) => t.replace(PH, '- OLD-1 cost a day.'));
+        local(WC, (t) => t.replace('# Write a commit', '# Write a commit\n\nMY TEAM RULE: always sign commits.'));
+        oldInstall();
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r1 = runS('install');
+        assert.match(r1.out, /handoff/);
+        assert.doesNotMatch(r1.out.split('--merge-incidents')[0].split('hold recorded incidents')[1] ?? '', /write-commit/);
+        runS('install', '--merge-incidents');
+        assert.match(read(WC), /MY TEAM RULE/);
+        assert.match(read(H), /Handoff v2/);
+        assert.match(read(H), /OLD-1/);
+      });
+
+      test('--merge-incidents never replaces a skill the manifest does not know', () => {
+        local(H, () => '---\nname: handoff\ndescription: ours\n---\n\n# Our procedure\n\n## Incidents\n\n- OURS cost a day.\n');
+        const m = manifest();
+        m.files = m.files.filter((f) => f.to !== H);
+        writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+        runS('install', '--merge-incidents');
+        assert.match(read(H), /Our procedure/);
+      });
+
+      test('text inside the placeholder’s italics is a local edit', () => {
+        local(H, (t) => t.replace(PH, PH.replace('here._', 'here. ASK DANA before any handoff._')));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /skipped/);
+        assert.match(read(H), /ASK DANA before any handoff/);
+      });
+
+      test('text added to the Incidents heading is a local edit', () => {
+        local(H, (t) => t.replace('## Incidents', '## Incidents (ask Dana before adding)').replace(PH, '- B1 cost a day.'));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /skipped/);
+        assert.match(read(H), /## Incidents \(ask Dana before adding\)/);
+      });
+
+      test('a bullet the person wrote survives upstream adopting and then retracting the same text', () => {
+        const X = '- **Proj (2026-11).** CS-64 shipped a marker nothing cleared.';
+        local(H, (t) => t.replace(PH, X));
+        upstream('handoff', (t) => t.replace(PH, X));
+        runS('install');
+        assert.equal(read(H).split(X).length - 1, 1, 'one copy, not two');
+        upstream('handoff', (t) => t.replace(X, PH));
+        runS('install');
+        assert.match(read(H), /CS-64 shipped a marker/);
+      });
+
+      test('a CRLF file with multi-line upstream bullets does not grow on every update', () => {
+        local(WQ, (t) => t.replace(/\n/g, '\r\n').trimEnd() + '\r\n- OWN one.\r\n');
+        const count = () => read(WQ).split('detached HEAD').length - 1;
+        const first = count();
+        runS('install');
+        runS('install');
+        runS('install');
+        assert.equal(count(), first);
+        assert.match(read(WQ), /OWN one/);
+      });
+    });
+
+    describe('round 3', () => {
+      const WC = '.claude/skills/write-commit/SKILL.md';
+      const SM = '.claude/skills/stateful-markers/SKILL.md';
+      const X = '- **Proj (2026-11).** CS-64 shipped a marker nothing cleared.';
+
+      test('--force for another file does not turn a person’s bullet into upstream’s', () => {
+        local(H, (t) => t.replace(PH, X));
+        upstream('handoff', (t) => t.replace(PH, X));
+        runS('install');
+        local(WC, (t) => t.replace('# Write a commit', '# Write a commit\n\nOur edit.'));
+        runS('install', '--force');
+        upstream('handoff', (t) => t.replace(X, PH));
+        runS('install');
+        assert.match(read(H), /CS-64 shipped a marker/);
+      });
+
+      test('a file that reads like upstream’s but holds a person’s bullet is not overwritten by a plain update', () => {
+        local(H, (t) => t.replace(PH, X));
+        upstream('handoff', (t) => t.replace(PH, X));
+        runS('install');
+        upstream('handoff', (t) => t.replace(X, PH).replace('# Handoff', '# Handoff v2'));
+        runS('install');
+        assert.match(read(H), /CS-64 shipped a marker/);
+        assert.match(read(H), /Handoff v2/);
+      });
+
+      test('a skipped file with no manifest entry stays skipped (uninstall, then reinstall)', () => {
+        local(H, (t) => t.replace(PH, '- MINE-1 cost a day.'));
+        runS('uninstall');
+        assert.match(read(H), /MINE-1/);
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        assert.match(runS('install').out, /1 skipped/);
+        assert.match(runS('install').out, /1 skipped/, 'still skipped the second time');
+        assert.match(read(H), /MINE-1/);
+        assert.doesNotMatch(read(H), /Handoff v2/);
+      });
+
+      test('a pack skill kept across a profile switch stays protected', () => {
+        runS('install', '--profile', 'backend');
+        local(SM, (t) => t.replace(/_None recorded yet[^\n]*_/, '- PACK-MINE cost a day.'));
+        runS('install', '--profile', 'core');
+        const pack = path.join(src, 'rules', 'backend', 'stateful-markers', 'SKILL.md');
+        writeFileSync(pack, readFileSync(pack, 'utf8').replace(/^# (.*)$/m, '# $1 v2'));
+        runS('install', '--profile', 'backend');
+        runS('update', '--profile', 'backend');
+        assert.match(read(SM), /PACK-MINE/);
+      });
+
+      test('a person who deleted or reworded an upstream bullet has made an edit: skipped, not undone', () => {
+        upstream('handoff', (t) => t.replace(PH, '- UP one.'));
+        runS('install');
+        local(H, (t) => t.replace('- UP one.', '- UP one, reworded by us.'));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /skipped/);
+        assert.match(read(H), /reworded by us/);
+        assert.doesNotMatch(read(H), /Handoff v2/);
+        local(H, (t) => t.replace('- UP one, reworded by us.', PH));
+        assert.match(runS('install').out, /skipped/);
+        assert.doesNotMatch(read(H), /- UP one\./);
+      });
+
+      test('the --merge-incidents hint is not shown when it cannot help', () => {
+        local(H, (t) => t.replace(PH, '- OLD-1 cost a day.'));
+        const m = manifest();
+        for (const f of m.files) {
+          delete f.bodySha;
+          delete f.incidents;
+        }
+        writeFileSync(p('.claude/harness-manifest.json'), JSON.stringify(m, null, 2));
+        upstream('handoff', (t) => t.replace('## Incidents', '## Occurrences'));
+        assert.doesNotMatch(runS('install').out, /--merge-incidents/);
+        assert.doesNotMatch(runS('install', '--merge-incidents').out, /--merge-incidents/);
+      });
+
+      test('a merge names the skill it updated around an incident', () => {
+        local(H, (t) => t.replace(PH, '- NAMED-1 cost a day.'));
+        upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+        const r = runS('install');
+        assert.match(r.out, /around the incidents you recorded/);
+        assert.match(r.out, /handoff\/SKILL\.md/);
+      });
+    });
+
+    test('when another section follows, its blank line is kept', () => {
+      upstream('handoff', (t) => t + '\n## After\n\nText.\n');
+      runS('install');
+      local(H, (t) => t.replace(PH, '- B1 one.\n- B2 two.'));
+      upstream('handoff', (t) => t.replace('# Handoff', '# Handoff v2'));
+      runS('install');
+      assert.match(read(H), /- B2 two\.\n\n## After/);
+    });
   });
 
   test('--force overwrites it', () => {

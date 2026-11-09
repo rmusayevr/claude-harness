@@ -38,6 +38,8 @@
 - `TUTORIAL.md` notes that it was recorded on 0.1.0.
 
 ### Fixed
+- An update no longer skips a skill just because `/promote-lesson` added an incident to it. Upstream wording is applied, upstream's own incidents follow upstream (reworded or retracted), and the ones a person added stay. It merges only when that provably loses nothing: both files have an `## Incidents` section holding only the exact placeholder and bullets, and nothing else differs from what was installed. Anything else is "locally edited", skipped as before; `--force` still replaces the file. A person who deleted or reworded one of upstream's own bullets has made an edit, and the file is skipped. An install from before the manifest recorded this cannot tell an incident from an edit: the update says so, and `--merge-incidents` states that incidents are your only edit, for the files it lists. A merged skill is named in the output.
+- A file that is skipped and has no manifest entry (after an uninstall, or a profile switch that kept it) now stays skipped. Before, the next update treated it as untouched and overwrote it.
 - `vault.mjs record` takes `--rule` (or `--rule-file`) and writes it into the lesson's head, so a lesson no longer graduates to the global vault with a placeholder instead of a rule. The first record of a slug requires it; a later project starts from the existing rule, and a rewrite in any project reaches the global copy. Global copies built before this change keep their placeholder until the slug is next recorded.
 - The plain split's fragments are now read exactly as the released guard read
   them, so the guards cannot be weaker than the release by construction. A
