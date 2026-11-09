@@ -182,6 +182,51 @@ describe('commands that wipe a local data store', () => {
     for (const c of ['dropdb --help', 'dropdb --version', 'docker volume rm --help', 'python manage.py flush --help']) expect(bash(c), 'allow', c);
   });
 
+  // Round 2 of the fresh-eyes review.
+  test('clustered sudo flags, runners before sudo, and a statement piped into a container or behind sudo', () => {
+    for (const c of [
+      'sudo -iu postgres dropdb app', 'sudo -Hu postgres psql -c "DROP DATABASE app"', 'nohup sudo -u postgres dropdb x', 'env A=1 sudo -u postgres dropdb x',
+      'echo "DROP DATABASE x" | docker compose exec -T db psql', 'echo "DROP DATABASE x" | docker exec -i db psql -U postgres',
+      'echo FLUSHALL | kubectl exec -i redis-0 -- redis-cli', 'echo "DROP DATABASE x" | sudo -u postgres psql',
+      'cat <<EOF | psql\nDROP DATABASE x;\nEOF', 'redis-cli <<< FLUSHALL',
+      'redis-cli -s /var/run/redis.sock FLUSHALL', 'redis-cli --cluster call h:7000 FLUSHALL', 'python -m django --settings x flush', 'docker compose down --volumes=true',
+    ]) assert.equal(expect(bash(c), 'ask', c).rule, 'data-wipe', c);
+    expect(bash('sudo -r staff_r rm -rf /'), 'deny', 'sudo -r takes a value');
+  });
+
+  test('text that only mentions the idiom is not a wipe: quotes are skipped and a heredoc ends at its terminator', () => {
+    for (const c of [
+      'grep -n "echo FLUSHALL | redis-cli" hooks/*.mjs', 'git log --grep "echo FLUSHALL | redis-cli"', 'git commit -m "guard: ask before echo FLUSHALL | redis-cli"',
+      'git commit -m "$(cat <<\'EOF\'\nSubject\n\necho FLUSHALL | redis-cli\nEOF\n)"', 'gh pr create --body "psql <<EOF\nDROP DATABASE x\nEOF"',
+      'psql <<EOF\nselect 1;\nEOF\ngit commit -m "Drop schema migration notes"', 'psql <<EOF\nCREATE TABLE t (id int);\nEOF',
+      `printf "%s${BS}n" flushdb-safe | redis-cli`, 'echo FLUSHALL | redis-cli-wrapper', 'echo flushall test; cat x | redis-cli',
+      'command -v dropdb', 'cat query.sql | psql', 'echo "flush the cache" | psql', 'echo DROP TABLE x | psql',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  // The first version read the whole command with unanchored regexes: 20 KB of `echo flushall ` took 27 s,
+  // past the hook timeout, and a timeout means the command runs unchecked.
+  test('the whole-command reader is linear, and a deny behind a huge input still lands', () => {
+    const rep = (s, kb) => s.repeat(Math.ceil((kb * 1024) / s.length));
+    const LIMIT_MS = 3000;
+    const shapes = {
+      'echo flushall': rep('echo flushall ', 200), 'echo drop database': rep('echo drop database ', 200), 'echo': rep('echo ', 200),
+      'psql words': rep('psql ', 200), 'psql heredoc openers': rep('psql <<A\n', 200),
+      'heredoc to a file with psql inside': 'cat > f.sh <<EOF\n' + rep('psql <<A\nselect 1;\nA\n', 200) + 'EOF',
+      'pipes': rep('a | ', 200), 'unterminated quote': '"' + rep('flushall | psql ', 200),
+    };
+    for (const [name, command] of Object.entries(shapes)) {
+      const t0 = performance.now();
+      decide(bash(command));
+      assert.ok(performance.now() - t0 < LIMIT_MS, `${name} took ${Math.round(performance.now() - t0)} ms`);
+    }
+    for (const command of [rep('psql ', 150) + '; rm -rf /', rep('echo flushall ', 15) + '; rm -rf /']) {
+      const t0 = performance.now();
+      assert.equal(decide(bash(command))?.decision, 'deny');
+      assert.ok(performance.now() - t0 < LIMIT_MS, 'the deny came in time');
+    }
+  });
+
   test('sudo options no longer hide the other rules either', () => {
     expect(bash('sudo -u deploy rm -rf /'), 'deny', 'rm -rf / behind sudo -u');
     expect(bash('sudo -E git reset --hard HEAD~3'), 'ask', 'git reset behind sudo -E');
