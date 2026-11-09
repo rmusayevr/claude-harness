@@ -468,7 +468,8 @@ async function main() {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: decision.decision,
-        permissionDecisionReason: `[harness:${decision.rule}] ${decision.reason}`,
+        // An ask names the skill with the procedure, at the moment it matters.
+        permissionDecisionReason: `[harness:${decision.rule}] ${decision.reason}${decision.decision === 'ask' ? ' Load the `migrate-data` skill before going on.' : ''}`,
       },
     }),
   );

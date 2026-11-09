@@ -225,9 +225,16 @@ function plainSegments(command) {
 function tokens(segment) {
   const raw = segment.match(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/g) ?? [];
   const out = raw.map(unquote);
-  while (out.length && (out[0] === 'sudo' || /^[A-Z_][A-Z0-9_]*=/.test(out[0]))) out.shift();
+  while (out.length && (out[0] === 'sudo' || /^[A-Z_][A-Z0-9_]*=/.test(out[0]))) {
+    const wasSudo = out.shift() === 'sudo';
+    // `sudo -u postgres dropdb x`: the options are not the command (they hid every rule behind sudo).
+    if (wasSudo) while (out.length && out[0].startsWith('-')) if (sudoTakesValue(out.shift())) out.shift();
+  }
   return out;
 }
+const SUDO_VALUE_FLAGS = new Set(['-u', '-g', '-h', '-p', '-C', '-D', '-R', '-T', '-U', '-r', '-t', '--user', '--group', '--host', '--prompt', '--chdir', '--chroot', '--command-timeout', '--other-user', '--role', '--type']);
+/** `-u` takes a value, and so does a cluster that ends in one: `-iu postgres`, `-Hu postgres`. */
+const sudoTakesValue = (o) => SUDO_VALUE_FLAGS.has(o) || (/^-[A-Za-z]{2,}$/.test(o) && 'ugCDhpRTUrt'.includes(o.slice(-1)));
 
 // ---------------------------------------------------------------- rule data
 
@@ -385,6 +392,221 @@ function checkDeploy(t, segment) {
 }
 
 /**
+ * Commands that wipe a local data store.
+ *
+ * Bought by sual-cavab: the agent deleted Docker volumes without looking at
+ * what was in them, and said so afterwards. Nothing covered it, and a skill
+ * the model may or may not load is the wrong place for a decision a command
+ * spells out. The ask ends by naming `risky-op` (see skillHint).
+ *
+ * Known gaps, left out until they have an incident (guards that over-block get
+ * switched off): cloud and hosted deletions (`aws s3 rb`, `gcloud ... delete`,
+ * `gh repo delete`, `npm unpublish`), git history (`git branch -D`,
+ * `git push --delete`, `git stash drop`), raw disk and file tools (`dd`,
+ * `shred`, `find -delete`), and `docker rm` of a container, which is
+ * regenerable.
+ */
+// A program may run inside one of these (a container, a cluster, a runner, a host).
+// Nothing that only prints text is on the list, so `echo docker volume rm` is not a wipe.
+const WIPE_WRAPPERS = new Set(['docker', 'docker-compose', 'podman', 'podman-compose', 'kubectl', 'uv', 'poetry', 'pipenv', 'pdm', 'ssh', 'npx', 'heroku', 'fly', 'flyctl']);
+// Prefixes that run the next command: `env X=1 cmd`, `nohup cmd`, `xargs cmd`, `nohup sudo -u x cmd`.
+const RUNNERS = new Set(['env', 'nohup', 'time', 'nice', 'command', 'xargs', 'sudo']);
+const VALUE_FLAGS = { env: new Set(['-u', '-C', '-S']), xargs: new Set(['-I', '-n', '-P', '-d', '-L', '-l', '-s', '-E', '-a']), nice: new Set(['-n']) };
+const exeName = (x) => base(x ?? '').replace(/\.exe$/i, '');
+const isFlag = (x) => x.startsWith('-');
+const DJANGO_VALUE_FLAGS = new Set(['--settings', '--pythonpath', '-v', '--verbosity']);
+const REDIS_VALUE_FLAGS = new Set(['-h', '-p', '-s', '-a', '-n', '-u', '-t', '-r', '-i', '-d', '--user', '--pass', '--cacert', '--cert', '--key', '--sni']);
+
+/** Drop `env X=1`, `nohup`, `xargs -n1` and the like from the front, to reach the command that runs. */
+function unwrap(t) {
+  let i = 0;
+  while (i < t.length && RUNNERS.has(exeName(t[i]))) {
+    const w = exeName(t[i++]);
+    const takes = (flag) => (w === 'sudo' ? sudoTakesValue(flag) : VALUE_FLAGS[w]?.has(flag));
+    while (i < t.length && (isFlag(t[i]) || (w === 'env' && /^[A-Za-z_][A-Za-z0-9_]*=/.test(t[i])))) i += takes(t[i]) ? 2 : 1;
+    if (w === 'command' && /^-[vV]$/.test(t[i - 1] ?? '')) return []; // `command -v dropdb` asks where it is, it does not run it
+  }
+  return t.slice(i);
+}
+
+/**
+ * A statement that travels as data: `echo FLUSHALL | redis-cli`, `psql <<EOF ... DROP DATABASE ... EOF`,
+ * `redis-cli <<< FLUSHALL`. No single segment shows it, so the command is read as pipelines, in ONE pass.
+ * Quoted text is skipped (a commit message or a grep pattern that mentions the idiom is not one) and a
+ * heredoc body ends at its terminator. Linear: the first version scanned the whole command with
+ * unanchored regexes and took 27 s on 20 KB, which is past the hook timeout.
+ */
+const WIPE_WORD = /(?:^|[^\w-])(?:flush(?:all|db)|drop\s+(?:database|schema)|dropDatabase)(?:$|[^\w-])/i;
+const DB_CLIENT = /^(?:redis-cli|valkey-cli|keydb-cli|psql|mysql|mariadb|mongosh|mongo|sqlite3)$/;
+function pipelines(command) {
+  const s = String(command ?? '');
+  const out = [];
+  let pl = { stages: [], bodies: [] };
+  let cur = '';
+  let quote = null;
+  let pending = []; // heredocs opened on the current line: { pl, tag, strip }
+  const endStage = () => { if (cur.trim()) pl.stages.push(cur.trim()); cur = ''; };
+  const endPipeline = () => { endStage(); if (pl.stages.length) out.push(pl); pl = { stages: [], bodies: [] }; };
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === '\\' && quote === '"') { cur += c + (s[i + 1] ?? ''); i++; continue; }
+      if (c === quote) quote = null;
+      cur += c;
+      continue;
+    }
+    if (c === '\\') { cur += c + (s[i + 1] ?? ''); i++; continue; }
+    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === '#' && (cur === '' || /\s$/.test(cur))) { while (i + 1 < s.length && s[i + 1] !== '\n') i++; continue; }
+    if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
+      const m = s.slice(i, i + 120).match(/^<<(-?)[ \t]*(['"]?)([A-Za-z_][\w-]*)\2/);
+      if (m) { pending.push({ pl, tag: m[3], strip: m[1] === '-' }); cur += m[0]; i += m[0].length - 1; continue; }
+    }
+    if (c === '|') { endStage(); if (s[i + 1] === '|') { endPipeline(); i++; } else if (s[i + 1] === '&') i++; continue; }
+    if (c === ';') { endPipeline(); continue; }
+    if (c === '&') {
+      if (cur.endsWith('>') || cur.endsWith('<') || s[i + 1] === '>') { cur += c; continue; }
+      endPipeline();
+      if (s[i + 1] === '&') i++;
+      continue;
+    }
+    if (c === '\n') {
+      endPipeline();
+      for (const h of pending) {
+        let body = '';
+        for (;;) {
+          const end = s.indexOf('\n', i + 1);
+          const line = s.slice(i + 1, end === -1 ? s.length : end);
+          i = end === -1 ? s.length : end;
+          if ((h.strip ? line.replace(/^\t+/, '') : line).trim() === h.tag || end === -1) break;
+          body += line + '\n';
+        }
+        h.pl.bodies.push(body);
+      }
+      pending = [];
+      continue;
+    }
+    cur += c;
+  }
+  endPipeline();
+  return out;
+}
+
+/** Does this stage run a database client, itself or inside a wrapper (docker exec, kubectl exec, ssh)? */
+function runsClient(stage) {
+  const t = unwrap(tokens(stage));
+  if (t.length === 0) return false;
+  const wrapped = WIPE_WRAPPERS.has(exeName(t[0]));
+  return t.some((x, i) => DB_CLIENT.test(exeName(x)) && (i === 0 || wrapped));
+}
+
+function checkPipedWipe(command) {
+  const c = String(command ?? '');
+  if (!/flush|drop/i.test(c)) return null; // nothing to find: skip the scan
+  const hit = {
+    decision: 'ask',
+    rule: 'data-wipe',
+    reason: 'This sends a statement that empties or drops a database to a database client. The data is gone once it runs. Look at what is in it first, and say so if it was never backed up.',
+  };
+  for (const pl of pipelines(c)) {
+    const at = pl.stages.findIndex(runsClient);
+    if (at < 0) continue;
+    // `echo "DROP DATABASE x" | docker exec -i db psql`: a printing stage before the client names the statement.
+    for (const stage of pl.stages.slice(0, at)) {
+      const t = unwrap(tokens(stage));
+      if (/^(echo|printf)$/.test(exeName(t[0] ?? '')) && WIPE_WORD.test(t.slice(1).join(' '))) return hit;
+    }
+    // `redis-cli <<< FLUSHALL`
+    const here = pl.stages[at].match(/<<<\s*([\s\S]*)$/);
+    if (here && WIPE_WORD.test(here[1])) return hit;
+    // `psql <<EOF ... EOF`, `cat <<EOF | psql`
+    if (pl.bodies.some((b) => WIPE_WORD.test(b))) return hit;
+  }
+  return null;
+}
+
+// Every program this rule knows contains one of these words; a segment without any is skipped untokenized.
+const WIPE_HINT = /docker|podman|django|manage\.py|redis|valkey|keydb|mongo|dropdb|psql|mysql|mariadb|sqlite3/i;
+
+function checkDataWipe(t0, segment) {
+  if (!WIPE_HINT.test(segment)) return null;
+  const t = unwrap(t0);
+  if (t.length === 0) return null;
+  if (t.some((x) => x === '--help' || x === '--version')) return null; // asking about the command is not running it
+  const first = exeName(t[0]);
+  const s = t.join(' ');
+  const wrapped = WIPE_WRAPPERS.has(first);
+  /** The program is the command itself, or runs inside a wrapper. */
+  const runs = (i) => i >= 0 && (i === 0 || wrapped);
+  const hit = (what) => ({
+    decision: 'ask',
+    rule: 'data-wipe',
+    reason: `${what}. The data is gone once this runs. Look at what is in it first, and say so if it was never backed up.`,
+  });
+
+  // Docker: volumes hold the data; images and containers are regenerable. Global options
+  // (`-f x.yml`, `--context dev`) may sit before the verb, so look for the verb, not its position.
+  if (/^(docker|podman)(-compose)?$/.test(first)) {
+    const at = (w) => t.indexOf(w, 1);
+    const insideContainer = (i) => t.slice(1, i).some((x) => x === 'run' || x === 'exec'); // `down` etc. is then an argument
+    const next = (i) => t.slice(i + 1).find((x) => !isFlag(x)) ?? '';
+    const vFlag = (x) => /^-[a-zA-Z]*v[a-zA-Z]*$/.test(x) || /^--volumes(=(true|1|yes))?$/i.test(x); // whole tokens: not `--remove-orphans`
+    const vol = at('volume');
+    if (vol > 0 && !insideContainer(vol) && /^(rm|remove|prune)$/.test(next(vol))) {
+      return hit('This deletes Docker volumes, which is where a container keeps its data');
+    }
+    const sys = at('system');
+    if (sys > 0 && !insideContainer(sys) && next(sys) === 'prune' && t.includes('--volumes')) {
+      return hit('`docker system prune --volumes` deletes every unused volume');
+    }
+    const down = at('down');
+    if (down > 0 && !insideContainer(down) && (first.endsWith('compose') || t.slice(1, down).includes('compose')) && t.slice(down + 1).some(vFlag)) {
+      return hit('`compose down -v` deletes the stack\'s volumes');
+    }
+    const rm = at('rm');
+    if (rm > 0 && !insideContainer(rm) && t.slice(rm + 1).some(vFlag)) {
+      return hit('`rm -v` deletes the container\'s anonymous volumes with it');
+    }
+  }
+
+  // Django: `flush` deletes every row. `flushsessions` is a different command.
+  const manage = t.findIndex((x) => /(^|\/)(manage\.py|django-admin(\.py)?)$/.test(x));
+  if (runs(manage) || (manage > 0 && /^(python[\d.]*|py)$/.test(first))) {
+    let i = manage + 1;
+    while (i < t.length && isFlag(t[i])) i += DJANGO_VALUE_FLAGS.has(t[i]) ? 2 : 1;
+    if (t[i] === 'flush') return hit('`manage.py flush` deletes every row in the database');
+  }
+  const dj = t.indexOf('django');
+  if (/^(python[\d.]*|py)$/.test(first) && dj > 0 && t[dj - 1] === '-m') { // python -m django [--settings x] flush
+    let i = dj + 1;
+    while (i < t.length && isFlag(t[i])) i += DJANGO_VALUE_FLAGS.has(t[i]) ? 2 : 1;
+    if (t[i] === 'flush') return hit('`django flush` deletes every row in the database');
+  }
+
+  // Redis and MongoDB, and dropping a database.
+  const redis = t.findIndex((x) => /^(redis|valkey|keydb)-cli$/.test(exeName(x)));
+  if (runs(redis)) {
+    // The Redis command is the first argument that is not an option, so a key named FLUSHALL is not one.
+    let i = redis + 1;
+    while (i < t.length && isFlag(t[i])) {
+      if (t[i] === '--cluster') { i += 3; continue; } // --cluster call host:port FLUSHALL
+      i += REDIS_VALUE_FLAGS.has(t[i]) ? 2 : 1;
+    }
+    if (/^flush(all|db)$/i.test(t[i] ?? '')) return hit('`FLUSHALL` and `FLUSHDB` empty a Redis server');
+  }
+  if (runs(t.findIndex((x) => /^(mongo|mongosh)$/.test(exeName(x)))) && /\bdropDatabase\b/.test(s)) {
+    return hit('`dropDatabase` deletes a whole MongoDB database');
+  }
+  if (runs(t.findIndex((x) => exeName(x) === 'dropdb'))) return hit('`dropdb` deletes a whole PostgreSQL database');
+  if (runs(t.findIndex((x) => /^(psql|mysql|mariadb|sqlite3)$/.test(exeName(x)))) && /\bdrop\s+(database|schema)\b/i.test(s)) {
+    return hit('This drops a whole database or schema');
+  }
+  const admin = t.findIndex((x) => exeName(x) === 'mysqladmin');
+  if (runs(admin) && t.slice(admin + 1).includes('drop')) return hit('`mysqladmin drop` deletes a whole MySQL database');
+  return null;
+}
+
+/**
  * Files a shell segment writes to.
  *
  * The write rules below decide from a path, and until now they could only be
@@ -502,7 +724,7 @@ function checkBashWrite(t, segment, escapes = true) {
  * .env` matched `rm-rf-nondisposable` (ask), the `.env` write was never
  * checked, the permission mode auto-approved the ask, and `.env` was written.
  */
-const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkBashWrite];
+const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkDataWipe, checkBashWrite];
 
 /**
  * The shell-aware segments are read with escapes; the plain split's are read
@@ -510,7 +732,7 @@ const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkBashWri
  * guard, and this one cannot be weaker than it, only stricter.
  */
 function checkBash(command) {
-  let ask = null;
+  let ask = checkPipedWipe(command); // a statement piped or heredoc'd to a database client: only the whole command shows it
   for (const [split, escapes] of [[segments(command), true], [plainSegments(command), false]]) for (const segment of split) {
     const t = tokens(segment);
     if (t.length === 0) continue;
@@ -652,11 +874,29 @@ async function main() {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: decision.decision,
-        permissionDecisionReason: `[harness:${decision.rule}] ${decision.reason}`,
+        permissionDecisionReason: `[harness:${decision.rule}] ${decision.reason}${skillHint(decision)}`,
       },
     }),
   );
   process.exit(0);
+}
+
+/**
+ * An ask names the skill that holds the procedure, so the model is pointed at
+ * it at the moment of action instead of having to remember it. A skill the
+ * model may or may not load is the weakest way to carry a rule; the hook speaks
+ * either way. Denials do not get one: nothing is to be loaded and carried on.
+ */
+const SKILL_FOR = [
+  [/^(rm-rf|git-discard|git-push|deploy-command|data-wipe)/, 'risky-op'],
+  [/^write-(dotenv|private-key|credential)/, 'handle-secrets'],
+  [/^write-prod-config/, 'review-a-config-change'],
+  [/^(edit-applied-migration|migration-against-prod|raw-ddl-against-prod)/, 'migrate-data'],
+];
+export function skillHint(decision) {
+  if (decision?.decision !== 'ask') return '';
+  const skill = SKILL_FOR.find(([re]) => re.test(decision.rule))?.[1];
+  return skill ? ` Load the \`${skill}\` skill before going on.` : '';
 }
 
 // Run main() only when executed directly, so the test file can import decide().

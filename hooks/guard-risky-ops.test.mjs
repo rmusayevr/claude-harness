@@ -129,6 +129,164 @@ describe('ask', () => {
 // ALLOW - the false-positive suite. These are ordinary work.
 // ===========================================================================
 
+describe('commands that wipe a local data store', () => {
+  // The incident: sual-cavab deleted Docker volumes without looking inside them.
+  const WIPES = [
+    'docker volume rm sual_pgdata', 'docker volume remove x', 'docker volume prune -f', 'docker system prune -a --volumes -f',
+    'docker compose down -v', 'docker compose down --volumes', 'docker-compose down -v', 'docker rm -v web', 'docker rm -fv web',
+    'docker container rm -v web', 'sudo docker volume rm x', 'podman volume prune',
+    'python manage.py flush --noinput', 'python3 manage.py flush', './manage.py flush', 'uv run python manage.py flush',
+    'poetry run python manage.py flush', 'docker compose exec web python manage.py flush --noinput', 'django-admin flush', 'python -m django flush',
+    'redis-cli FLUSHALL', 'redis-cli -n 2 flushdb', 'docker exec redis redis-cli FLUSHALL',
+    'mongosh --eval "db.dropDatabase()"', 'dropdb myapp', 'psql -c "DROP DATABASE app"', 'mysql -e "drop schema app"',
+  ];
+  test('each one asks', () => {
+    for (const c of WIPES) assert.equal(expect(bash(c), 'ask', c).rule, 'data-wipe', c);
+  });
+
+  // Found by a fresh-eyes review of the first version.
+  const BS = String.fromCharCode(92);
+  const SPELLINGS = [
+    // global options before the verb, a path or .exe, double spaces
+    'docker compose -f x.yml down -v', 'docker compose -p p down -v', 'docker compose --project-name p down --volumes',
+    'docker-compose -f docker-compose.prod.yml down -v', 'docker -H tcp://h:2375 volume rm x', 'docker --context dev volume rm x',
+    '/usr/bin/docker volume rm x', 'docker.exe volume rm x', 'docker  volume  rm x',
+    // sudo with options, env, nohup, xargs
+    'sudo -u postgres dropdb app', 'sudo -u redis redis-cli FLUSHALL', 'sudo -E docker volume rm x',
+    'env DOCKER_HOST=x docker volume rm x', 'nohup docker volume prune -f', 'docker volume ls -q | xargs docker volume rm',
+    // inside a container, a cluster or a platform
+    'docker exec db dropdb -U postgres app', 'docker compose exec db dropdb -U postgres app',
+    'docker compose exec db psql -U postgres -c "DROP DATABASE app"', 'docker exec -i db psql -U postgres -c "drop database app"',
+    'kubectl exec db-0 -- psql -c "DROP DATABASE app"', 'heroku run python manage.py flush --noinput',
+    // statements that travel as data
+    'echo FLUSHALL | redis-cli', `printf "FLUSHDB${BS}n" | redis-cli -n 1`, 'echo "DROP DATABASE app;" | psql', 'echo "db.dropDatabase()" | mongosh app',
+    'psql <<EOF\nDROP DATABASE app;\nEOF', "psql -U postgres <<'SQL'\nDROP SCHEMA public CASCADE;\nSQL",
+    // other spellings
+    'podman-compose down -v', 'docker compose rm -sfv', 'python manage.py --settings x flush', 'mysqladmin -f drop app',
+    'mongosh --eval "db.runCommand({dropDatabase: 1})"', 'keydb-cli FLUSHALL',
+  ];
+  test('the spellings a review found are asked too', () => {
+    for (const c of SPELLINGS) assert.equal(expect(bash(c), 'ask', c).rule, 'data-wipe', c);
+  });
+
+  test('--remove-orphans is not -v, and a key named FLUSHALL is not a flush', () => {
+    for (const c of [
+      'docker compose down --remove-orphans', 'docker-compose down --remove-orphans', 'docker compose down --rmi all --remove-orphans',
+      'docker compose down --remove-orphans && docker compose up -d --build',
+      'redis-cli DEL FLUSHALL', 'redis-cli GET flushdb', 'docker exec redis redis-cli SET flushall 1',
+      'docker compose exec web ./down.sh -v', 'python manage.py help flush', 'psql -c "select 1" -d dropdb_test',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  test('asking about a command is not running it', () => {
+    for (const c of ['dropdb --help', 'dropdb --version', 'docker volume rm --help', 'python manage.py flush --help']) expect(bash(c), 'allow', c);
+  });
+
+  // Round 2 of the fresh-eyes review.
+  test('clustered sudo flags, runners before sudo, and a statement piped into a container or behind sudo', () => {
+    for (const c of [
+      'sudo -iu postgres dropdb app', 'sudo -Hu postgres psql -c "DROP DATABASE app"', 'nohup sudo -u postgres dropdb x', 'env A=1 sudo -u postgres dropdb x',
+      'echo "DROP DATABASE x" | docker compose exec -T db psql', 'echo "DROP DATABASE x" | docker exec -i db psql -U postgres',
+      'echo FLUSHALL | kubectl exec -i redis-0 -- redis-cli', 'echo "DROP DATABASE x" | sudo -u postgres psql',
+      'cat <<EOF | psql\nDROP DATABASE x;\nEOF', 'redis-cli <<< FLUSHALL',
+      'redis-cli -s /var/run/redis.sock FLUSHALL', 'redis-cli --cluster call h:7000 FLUSHALL', 'python -m django --settings x flush', 'docker compose down --volumes=true',
+    ]) assert.equal(expect(bash(c), 'ask', c).rule, 'data-wipe', c);
+    expect(bash('sudo -r staff_r rm -rf /'), 'deny', 'sudo -r takes a value');
+  });
+
+  test('text that only mentions the idiom is not a wipe: quotes are skipped and a heredoc ends at its terminator', () => {
+    for (const c of [
+      'grep -n "echo FLUSHALL | redis-cli" hooks/*.mjs', 'git log --grep "echo FLUSHALL | redis-cli"', 'git commit -m "guard: ask before echo FLUSHALL | redis-cli"',
+      'git commit -m "$(cat <<\'EOF\'\nSubject\n\necho FLUSHALL | redis-cli\nEOF\n)"', 'gh pr create --body "psql <<EOF\nDROP DATABASE x\nEOF"',
+      'psql <<EOF\nselect 1;\nEOF\ngit commit -m "Drop schema migration notes"', 'psql <<EOF\nCREATE TABLE t (id int);\nEOF',
+      `printf "%s${BS}n" flushdb-safe | redis-cli`, 'echo FLUSHALL | redis-cli-wrapper', 'echo flushall test; cat x | redis-cli',
+      'command -v dropdb', 'cat query.sql | psql', 'echo "flush the cache" | psql', 'echo DROP TABLE x | psql',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  // The first version read the whole command with unanchored regexes: 20 KB of `echo flushall ` took 27 s,
+  // past the hook timeout, and a timeout means the command runs unchecked.
+  test('the whole-command reader is linear, and a deny behind a huge input still lands', () => {
+    const rep = (s, kb) => s.repeat(Math.ceil((kb * 1024) / s.length));
+    const LIMIT_MS = 3000;
+    const shapes = {
+      'echo flushall': rep('echo flushall ', 200), 'echo drop database': rep('echo drop database ', 200), 'echo': rep('echo ', 200),
+      'psql words': rep('psql ', 200), 'psql heredoc openers': rep('psql <<A\n', 200),
+      'heredoc to a file with psql inside': 'cat > f.sh <<EOF\n' + rep('psql <<A\nselect 1;\nA\n', 200) + 'EOF',
+      'pipes': rep('a | ', 200), 'unterminated quote': '"' + rep('flushall | psql ', 200),
+    };
+    for (const [name, command] of Object.entries(shapes)) {
+      const t0 = performance.now();
+      decide(bash(command));
+      assert.ok(performance.now() - t0 < LIMIT_MS, `${name} took ${Math.round(performance.now() - t0)} ms`);
+    }
+    for (const command of [rep('psql ', 150) + '; rm -rf /', rep('echo flushall ', 15) + '; rm -rf /']) {
+      const t0 = performance.now();
+      assert.equal(decide(bash(command))?.decision, 'deny');
+      assert.ok(performance.now() - t0 < LIMIT_MS, 'the deny came in time');
+    }
+  });
+
+  test('sudo options no longer hide the other rules either', () => {
+    expect(bash('sudo -u deploy rm -rf /'), 'deny', 'rm -rf / behind sudo -u');
+    expect(bash('sudo -E git reset --hard HEAD~3'), 'ask', 'git reset behind sudo -E');
+  });
+
+  test('nearby commands that keep the data are left alone', () => {
+    for (const c of [
+      'docker ps', 'docker volume ls', 'docker volume inspect x', 'docker volume create x', 'docker compose down', 'docker compose up -d',
+      'docker compose logs -f', 'docker system prune -f', 'docker image prune -a', 'docker rm web', 'docker rm -f web', 'docker rmi img',
+      'docker run --rm -v data:/data alpine ls', 'docker run -v data:/data alpine ls',
+      'python manage.py migrate', 'python manage.py flushsessions', 'python manage.py shell', 'python manage.py test',
+      'redis-cli GET key', 'redis-cli --scan', 'mongosh --eval "db.users.find()"', 'psql -c "SELECT 1"', 'psql -c "DROP TABLE tmp"',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  test('text that merely mentions a wipe is not one', () => {
+    for (const c of [
+      'echo docker volume rm x', 'grep -r "manage.py flush" .', 'cat README.md', 'git commit -m "docker volume rm notes"',
+      'git log --grep="redis-cli FLUSHALL"',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  test('a wipe behind another command, or inside bash -c, is still seen', () => {
+    expect(bash('cd backend && python manage.py flush --noinput'), 'ask', 'after cd');
+    expect(bash('bash -c "docker volume prune -f"'), 'ask', 'inside bash -c');
+    expect(bash('true; docker compose down -v'), 'ask', 'after a separator');
+  });
+});
+
+describe('an ask names the skill to load', () => {
+  test('through the process, the reason ends with the skill', async () => {
+    const cases = [
+      ['docker volume rm x', 'data-wipe', 'risky-op'],
+      ['rm -rf ./data', 'rm-rf-nondisposable', 'risky-op'],
+      ['git reset --hard HEAD~3', 'git-discard-worktree', 'risky-op'],
+      ['terraform apply', 'deploy-command', 'risky-op'],
+    ];
+    for (const [command, rule, skill] of cases) {
+      const { out } = await runHook(JSON.stringify(bash(command)));
+      const reason = JSON.parse(out).hookSpecificOutput.permissionDecisionReason;
+      assert.match(reason, new RegExp(`^\\[harness:${rule}\\]`), command);
+      assert.match(reason, /risky-op/, command);
+      if (skill) assert.match(reason, /Load the `risky-op` skill before going on\.$/, command);
+    }
+  });
+
+  test('a credential or production-config write asks with its own skill', async () => {
+    const a = JSON.parse((await runHook(JSON.stringify(write('config/production.json')))).out).hookSpecificOutput;
+    assert.equal(a.permissionDecision, 'ask');
+    assert.match(a.permissionDecisionReason, /Load the `review-a-config-change` skill/);
+    const b = JSON.parse((await runHook(JSON.stringify(write('keys/server.pem')))).out).hookSpecificOutput;
+    assert.match(b.permissionDecisionReason, /Load the `handle-secrets` skill/);
+  });
+
+  test('a denial gets no hint', async () => {
+    const { out } = await runHook(JSON.stringify(bash('git push --force origin main')));
+    assert.doesNotMatch(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /Load the/);
+  });
+});
+
 describe('migrations: the write is reversible, the edit is not', () => {
   // Bought by a real incident: 'ask' on every NEW migration made non-interactive
   // runs impossible — there is no operator to approve, so ask is a hard block,

@@ -383,9 +383,21 @@ Matches `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`.
 - `git reset --hard`, `git clean -fdx`, `git checkout .`
 - `rm -rf` on anything that is not a regenerable build artifact
 - `terraform apply`, `npm publish`, `docker push`, `kubectl delete`
+- Wiping a local data store: `docker volume rm`/`prune`, `docker compose down -v`,
+  `docker system prune --volumes`, `docker rm -v`, `manage.py flush`,
+  `FLUSHALL`/`FLUSHDB`, `dropDatabase()`, `dropdb`, `DROP DATABASE`
 - Migrations, prod config, `.pem`/`credentials.json`
 - `--force-with-lease` onto a protected branch
 - Bare `git push --force` with no branch named *(undecidable → ask, never deny)*
+
+Each ask ends by naming the skill that holds the procedure (`risky-op`,
+`handle-secrets`, `review-a-config-change` or `migrate-data`), so Claude is
+pointed at it at the moment it matters instead of having to remember it.
+
+Not covered, on purpose, until one of them has an incident behind it: cloud and
+hosted deletions (`aws s3 rb`, `gh repo delete`, `npm unpublish`), git history
+(`git branch -D`, `git push --delete`, `git stash drop`), and raw disk and file
+tools (`dd`, `shred`, `find -delete`).
 
 ### `guard-prod-ddl`
 

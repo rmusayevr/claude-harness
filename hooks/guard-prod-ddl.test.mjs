@@ -246,6 +246,12 @@ describe('process contract', () => {
     });
   }
 
+  test('the ask names the migrate-data skill to load', async () => {
+    const { out } = await runHook(JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'python manage.py migrate' } }), PROD_ENV);
+    const reason = JSON.parse(out).hookSpecificOutput.permissionDecisionReason;
+    assert.match(reason, /Load the `migrate-data` skill before going on\.$/);
+  });
+
   test('the ask is recorded in the decision log', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'harness-log-ddl-'));
     mkdirSync(path.join(dir, '.claude'));
