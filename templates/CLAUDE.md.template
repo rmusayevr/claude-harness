@@ -1,4 +1,4 @@
-<!-- BEGIN harness v0.2.0 -->
+<!-- BEGIN harness v0.3.0 -->
 <!-- Managed by the harness plugin. Edits inside this block are overwritten on
      update unless `install.mjs` detects them, in which case it refuses without
      --force. Write your own rules OUTSIDE this block. -->
@@ -48,4 +48,4 @@ every subagent.
 - When something in this project costs real work through a mistake that was
   foreseeable, run `/harness:promote-lesson` rather than resolving to remember.
 
-<!-- END harness v0.2.0 -->
+<!-- END harness v0.3.0 -->

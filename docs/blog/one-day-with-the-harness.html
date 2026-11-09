@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A real one-day run of the Claude harness issue loop: 13 issues, 16 pull requests, 25 reviews, what went wrong and what it changed.">
+<meta property="og:title" content="One Day With the Harness">
+<meta property="og:description" content="A real one-day run of the Claude harness issue loop: 13 issues, 16 pull requests, 25 reviews, what went wrong and what it changed.">
+<meta property="og:type" content="article">
+<title>One Day With the Harness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=JetBrains+Mono:wght@400;600&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+/* A long-form post: one column, a small clock label above each section. */
+:root {
+  --bg: #f1f4f7;
+  --surface: #ffffff;
+  --ink: #13202c;
+  --muted: #546577;
+  --line: #d3dce4;
+  --build: #1c5fd0;
+  --blocker: #b8420d;
+  --ok: #17794a;
+  --human: #6b36ab;
+  --soft-build: #e5eefc;
+  --soft-blocker: #fcebe2;
+  --soft-ok: #e1f3e9;
+  --soft-human: #efe6f8;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1923; --surface: #15232f; --ink: #e5edf4; --muted: #9db0c1; --line: #28394a;
+    --build: #7db0ff; --blocker: #ff9d6e; --ok: #55c78f; --human: #c9a8ff;
+    --soft-build: #17304f; --soft-blocker: #3a2519; --soft-ok: #163527; --soft-human: #2c2142;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1923; --surface: #15232f; --ink: #e5edf4; --muted: #9db0c1; --line: #28394a;
+  --build: #7db0ff; --blocker: #ff9d6e; --ok: #55c78f; --human: #c9a8ff;
+  --soft-build: #17304f; --soft-blocker: #3a2519; --soft-ok: #163527; --soft-human: #2c2142;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 17px/1.6 var(--body); padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 760px; margin-inline: auto; }
+.wide { max-width: 1040px; margin-inline: auto; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.2rem, 6vw, 3.4rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.5rem, 3.6vw, 2rem); font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0 0 1em; }
+a { color: var(--build); text-underline-offset: 3px; }
+a:focus-visible, summary:focus-visible { outline: 3px solid var(--build); outline-offset: 2px; border-radius: 3px; }
+code, pre, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--soft-build); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+pre { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0 0 1.2em; line-height: 1.5; }
+pre code { background: none; padding: 0; overflow-wrap: normal; }
+.eyebrow { font: 600 0.78rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+.lede { font-size: 1.2rem; color: var(--muted); margin-top: 18px; }
+header { margin-bottom: 36px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; font-size: 0.95rem; }
+
+/* number strip */
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 30px 0 8px; }
+.strip div { background: var(--surface); padding: 14px 16px; min-width: 0; }
+.strip b { display: block; font: 700 1.9rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.strip span { font-size: 0.85rem; color: var(--muted); }
+.fine { font-size: 0.86rem; color: var(--muted); }
+
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 22px 0 0; font-size: 0.92rem; }
+
+/* article sections */
+section { padding-top: 48px; }
+section > .clock { font: 600 0.78rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+section h2 { margin-bottom: 16px; }
+.byline { color: var(--muted); font-size: 0.95rem; margin: 14px 0 0; }
+
+/* loop steps */
+.steps { list-style: none; margin: 18px 0 22px; padding: 0; display: grid; gap: 10px; }
+.steps li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.steps .n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 600 0.85rem var(--mono); background: var(--soft-build); color: var(--build); }
+.steps li.hum .n { background: var(--soft-human); color: var(--human); }
+.steps li.blk .n { background: var(--soft-blocker); color: var(--blocker); }
+.steps li.ok .n { background: var(--soft-ok); color: var(--ok); }
+.steps strong { display: block; }
+.steps span { color: var(--muted); font-size: 0.95rem; }
+.skill { font: 600 0.8rem var(--mono); color: var(--build); }
+
+/* chart */
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 10px 10px; overflow-x: auto; }
+.chart svg { display: block; min-width: 740px; width: 100%; height: auto; }
+.chart text { fill: var(--ink); font: 12px var(--mono); }
+.chart .dim { fill: var(--muted); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.88rem; color: var(--muted); margin: 12px 4px 0; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+
+/* tables */
+.tablewrap { overflow-x: auto; margin: 0 0 1.3em; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 0.95rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.74rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tag { display: inline-block; font: 600 0.72rem var(--mono); padding: 1px 7px; border-radius: 99px; white-space: nowrap; }
+.tag.blocker { background: var(--soft-blocker); color: var(--blocker); }
+.tag.decision { background: var(--soft-human); color: var(--human); }
+.tag.nit { background: var(--soft-build); color: var(--build); }
+.tag.ok { background: var(--soft-ok); color: var(--ok); }
+
+/* bars */
+.bars { display: grid; gap: 8px; margin: 14px 0 6px; }
+.bar { display: grid; grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) 36px; gap: 10px; align-items: center; font-size: 0.92rem; }
+.bar .track { height: 14px; background: var(--soft-build); border-radius: 4px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--build); border-radius: 4px; }
+.bar b { font: 600 0.85rem var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.bar .lbl { min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 0.82rem; }
+
+.callout { border-left: 4px solid var(--human); background: var(--soft-human); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 0 0 1.2em; }
+.callout.warn { border-color: var(--blocker); background: var(--soft-blocker); }
+.callout p:last-child { margin: 0; }
+ul.plain { padding-left: 1.2em; margin: 0 0 1.2em; }
+ul.plain li { margin-bottom: 0.45em; }
+footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); color: var(--muted); font-size: 0.9rem; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Blog · the day was 8 November 2026</p>
+    <h1>One Day With the Harness</h1>
+    <p class="lede">A client questions tracker went from a list of GitHub issues to a finished v1 on a live staging site in one working day. An AI agent did the building and a second one reviewed it. This is what that looked like, including the mistakes, the stops, and the fixes the project forced back into the harness.</p>
+    <p class="byline">By rmusayevr · published 9 November 2026</p>
+    <div class="links">
+      <a href="https://github.com/rmusayevr/sual-cavab">The project: sual-cavab</a>
+      <a href="https://github.com/rmusayevr/claude-harness">The harness: claude-harness</a>
+      <a href="../">How the harness works, interactively</a>
+    </div>
+    <div class="strip" aria-label="The day in numbers">
+      <div><b>13</b><span>issues, all closed</span></div>
+      <div><b>16</b><span>pull requests merged</span></div>
+      <div><b>25</b><span>reviewer runs</span></div>
+      <div><b>~395</b><span>tests (289 backend, ~106 frontend)</span></div>
+      <div><b>11 h 28 m</b><span>first issue to last merge</span></div>
+    </div>
+    <p class="fine">Counted from GitHub and the project's own logs. The clock includes every wait for the owner. About 3,300 lines of product code and 4,300 lines of tests. Staging is live on Render with invented demo data only.</p>
+    <nav class="toc" aria-label="Sections">
+      <a href="#loop">The loop</a><a href="#day">The day</a><a href="#one-issue">One issue</a><a href="#caught">What review caught</a><a href="#stops">Where it stopped</a><a href="#learned">What the harness learned</a><a href="#slow">What was slow</a><a href="#logs">What the logs say</a><a href="#try">Try it</a><a href="#limits">Limits</a>
+    </nav>
+  </header>
+
+  <section id="loop">
+    <div class="clock">11:44 UTC</div>
+    <div class="body">
+      <h2>The loop</h2>
+      <p>The owner wrote eleven issues, labelled them <code>ready</code>, and typed one command: <code>/work-the-queue</code> (<code>/harness:work-the-queue</code> if you installed the harness as a plugin). From there the agent repeated the same six steps for each issue, and added two issues of its own when it found work: local PostgreSQL, and a faster test suite. Nothing about the order is clever. What matters is that every step ends in something you can check on GitHub.</p>
+      <ol class="steps">
+        <li><span class="n">1</span><div><strong>Pick the next issue and size it</strong><span>Small, Medium, or Risky. An issue that touches a risky path is Risky, and the agent never sizes down. Medium and Risky post a plan as an issue comment and wait for a person.</span></div></li>
+        <li class="hum"><span class="n">2</span><div><strong>Stop where a person has to decide</strong><span>The project listed what only the owner may decide, such as who can see a project, or what client data leaves the system. Those issues stop at the plan.</span></div></li>
+        <li><span class="n">3</span><div><strong>Build on a branch, with tests</strong><span>Per <span class="skill">design-a-test</span> every behaviour change gets a test, and a fix gets one that fails without it. Per <span class="skill">verify-for-real</span> each check passes by its own exit code.</span></div></li>
+        <li><span class="n">4</span><div><strong>Read your own diff, then open the PR</strong><span><span class="skill">read-your-own-diff</span>, then a PR into <code>staging</code> with <code>Closes #n</code>, and a description of what was verified and what was not.</span></div></li>
+        <li class="blk"><span class="n">5</span><div><strong>A reviewer with no memory reads the diff</strong><span>The <span class="skill">fresh-eyes-reviewer</span> subagent has never seen the conversation that produced the code. <span class="skill">triage-review</span> labels each finding blocker, decision, settled or nit. Blockers get fixed. After three rounds it stops and asks.</span></div></li>
+        <li class="ok"><span class="n">6</span><div><strong>Merge when CI is green, then the next issue</strong><span>Into <code>staging</code> only. The loop never merges into <code>main</code>, and a hook refuses it.</span></div></li>
+      </ol>
+      <p>The whole setup lives in one file in the project, <code>.claude/harness-loop.json</code>. This is the real one, trimmed to what the loop reads:</p>
+<pre><code>{
+  "base": "staging",
+  "protected": ["main"],
+  "queue": { "label": "ready" },
+  "checks": [
+    "cd backend && python manage.py test --noinput",
+    "cd frontend && npm run lint && npm run typecheck && npm test && npm run build"
+  ],
+  "risky": ["backend/accounts/", "migrations/", "backend/drafting/"],
+  "stopFor": [
+    "who can see or change a project",
+    "anything that sends a message instead of drafting one",
+    "what client data is sent to the drafting API"
+  ]
+}</code></pre>
+    </div>
+  </section>
+
+  <section id="day">
+    <div class="clock">12:00 to 23:12</div>
+    <div class="body">
+      <h2>The day, PR by PR</h2>
+      <p>Each bar runs from a PR opening to its merge. The work before the PR opened is not drawn, and neither are the waits for the owner. The long grey bar is the harness update that took five review rounds, covered below.</p>
+    </div>
+  </section>
+  <div class="wide">
+    <div class="chart" role="img" aria-label="Timeline of the sixteen pull requests, 12:00 to 23:12 UTC. Most were open for under an hour; the harness update #16 was open for three hours.">
+      <svg id="timeline" viewBox="0 0 980 470" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--build)"></i>feature or infrastructure PR</span>
+      <span><i style="background:var(--muted)"></i>harness update or lesson</span>
+      <span><i style="background:var(--ok);border-radius:50%"></i>merged into staging</span>
+      <span><i style="background:var(--blocker);border-radius:50%"></i>one review triage comment</span>
+    </div>
+  </div>
+
+  <section id="one-issue">
+    <div class="clock">15:58 UTC</div>
+    <div class="body">
+      <h2>One issue, start to finish: accounts</h2>
+      <p>Issue #4 asked for sign-in and sign-out, with anonymous access to the API denied. It touches <code>backend/accounts/</code>, a risky path, so the plan waited for approval. The PR was open for 29 minutes, and review took three rounds and one decision from the owner.</p>
+      <p>The PR description carried the evidence: checks with exit codes, 20 backend tests and 11 frontend tests, and three mutation checks, where removing a protection (CSRF on login, the default permission class) makes a named test fail. Then an end-to-end run through the real proxy, which failed the first time. The path rewrite dropped a trailing slash, so every sign-in <code>POST</code> returned a 500 while every unit test passed. The fix and its regression test went into the same PR.</p>
+      <h3>Review, round 1: four blockers</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Finding</th><th>Label</th><th>Outcome</th></tr></thead>
+        <tbody>
+          <tr><td>The login throttle keyed on a client-controlled header, so a fresh header on each attempt never hit the limit</td><td><span class="tag blocker">blocker</span></td><td>Fixed, with a test that failed before (400 instead of 429)</td></tr>
+          <tr><td>A database migrated before the user model changed now fails <code>migrate</code></td><td><span class="tag blocker">blocker</span></td><td>README note; no deployed database exists yet</td></tr>
+          <tr><td>Sign-out showed "signed out" even when the backend refused</td><td><span class="tag blocker">blocker</span></td><td>Fixed, test failed before the fix</td></tr>
+          <tr><td>Two emails differing only in case crashed the admin forms and <code>createsuperuser</code></td><td><span class="tag blocker">blocker</span></td><td>Fixed; three tests failed before</td></tr>
+          <tr><td>Cookies are not marked <code>Secure</code></td><td><span class="tag nit">nit</span></td><td>Deployment hardening, moved to the deploy issue</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Round 2 produced a decision, not a fix</h3>
+      <p>The fix for the forged header made every sign-in reach Django from the web server's own address. The throttle became one bucket for everybody, so ten bad attempts a minute from anyone would lock everyone out. The plan's rule, "10 per minute per IP", had no trustworthy IP behind a proxy.</p>
+      <div class="callout"><p><span class="tag decision">decision</span> The agent did not pick a rule. It asked the owner, who chose a throttle per account. Round 3 verified it through the real proxy: the tenth bad attempt on one email got a 400, the eleventh a 429, even with a forged header on every attempt, and another account signed in right after.</p></div>
+    </div>
+  </section>
+
+  <section id="caught">
+    <div class="clock">all day</div>
+    <div class="body">
+      <h2>What the fresh-eyes review caught</h2>
+      <p>The reviewer found a real defect in most issues. These are the ones worth remembering, because none of them showed up in a green test run:</p>
+      <ul class="plain">
+        <li><strong>A deadlock the agent's own fix introduced</strong> (questions, #6). A row lock added to fix a race made two transactions wait on each other. Only a threaded test on real PostgreSQL showed it.</li>
+        <li><strong>A refusal that showed nothing, and a lost update</strong> (question screens, #8). When the server refused an answer, the screen showed no message. Separately, two people editing the same question could silently overwrite each other.</li>
+        <li><strong>An uncapped <code>retry-after</code></strong> (drafting, #9). The API client would have waited as long as the server told it to.</li>
+        <li><strong>A start command a visitor could keep down</strong> (deploy, #10). A rename by a visitor could have kept the service from starting.</li>
+        <li><strong>A throttle bypass, a sign-out that lied, an email-case crash</strong> (accounts, #4), from the table above.</li>
+      </ul>
+      <p>Every reviewer run is logged. The reviewer is read-only on git. On an earlier project a reviewer ran <code>git checkout</code> and left the shared checkout on a detached HEAD, so now it may only read, and anything it wants to run goes in a throwaway file outside the repo.</p>
+    </div>
+  </section>
+
+  <section id="stops">
+    <div class="clock">three stops</div>
+    <div class="body">
+      <h2>Where it stopped for a person</h2>
+      <p>The agent is allowed to be wrong about a function. It is not allowed to decide who can see client data. Three places where the loop stopped on purpose:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Issue</th><th>Why it stopped</th><th>What the person decided</th></tr></thead>
+        <tbody>
+          <tr><td class="num">#5 projects</td><td>On the stop list: who can see or change a project</td><td>The access table: owners and members, a 404 for outsiders, no delete in v1</td></tr>
+          <tr><td class="num">#4 accounts</td><td>A throttle with no trustworthy client IP</td><td>Throttle per account</td></tr>
+          <tr><td class="num">#9 drafting</td><td>Stop list and a risky path: what client data goes to the Claude API</td><td>Send only question text, why it matters and what it blocks. No names, answers or dates. No stored drafts. Sonnet by default. After the owner checked the data-retention terms, one addition: the endpoint refuses to start on a model with a longer retention period</td></tr>
+        </tbody>
+      </table></div>
+      <p>The plan for #9 listed five decisions with a recommended answer for each, and said plainly that it had <em>not</em> verified the account's data terms, because that is a fact about the account. It then waited. The deploy issue (#10) was parked the same way. The agent prepared everything in the repository, then waited for the owner to create the service in Render. The owner ran the smoke test against the live site: 12 checks, 12 passed.</p>
+    </div>
+  </section>
+
+  <section id="learned">
+    <div class="clock">fixes upstream</div>
+    <div class="body">
+      <h2>What the project taught the harness</h2>
+      <p>The project was also the harness's first full test. Whenever the run hit a problem in the harness itself, the project session reported it and the fix went upstream, with a test, through the same issue loop. Three of the project's sixteen PRs are harness updates, and a fourth records two lessons.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>What happened</th><th>What changed in the harness</th></tr></thead>
+        <tbody>
+          <tr><td>A guard update took five review rounds. Each fix for a false alarm removed a block the old command splitter had caught by accident.</td><td>Guards are <a href="https://github.com/rmusayevr/claude-harness/pull/14">never weaker than the plain split by construction</a>, proved by a fuzz test of 8,000 generated commands and a replay of 6,359 real commands, none weaker (<a href="https://github.com/rmusayevr/claude-harness/pull/11">#11</a>, <a href="https://github.com/rmusayevr/claude-harness/pull/12">#12</a> and <a href="https://github.com/rmusayevr/claude-harness/pull/14">#14</a>).</td></tr>
+          <tr><td>Hundreds of chained <code>eval</code>s made a guard run for 22 seconds against a 10 second hook limit. A hook that times out decides nothing.</td><td><a href="https://github.com/rmusayevr/claude-harness/pull/15">Capped the expansion</a>. 5,000 chained evals now take under 10 ms, and a test pins eight extreme shapes.</td></tr>
+          <tr><td>The dependency review proposed packages released three to six days earlier.</td><td>A release-age rule: pin the newest release at least two weeks old. The drafting feature got <code>anthropic 2.3.0</code>, not the 2.6.0 released three days before.</td></tr>
+          <tr><td>Only skills the loop named ever fired. The rest sat unused.</td><td><a href="https://github.com/rmusayevr/claude-harness/pull/13">The loop now names the skill</a> at each step where it matters.</td></tr>
+          <tr><td>Reviews found real defects in most issues, and some skills guard data and secrets.</td><td><a href="https://github.com/rmusayevr/claude-harness/pull/16">The reviewer and five high-stakes skills are pinned to Opus</a>, and pins only go up. A test stops anyone pinning a skill down, because a skill's model lasts for the rest of the turn.</td></tr>
+          <tr><td><code>/promote-lesson</code> edits a skill, and the installer then skipped every later update to it.</td><td><a href="https://github.com/rmusayevr/claude-harness/pull/23">Updates merge recorded incidents</a> only when that provably loses nothing. It took three fresh-eyes rounds to get right.</td></tr>
+          <tr><td>A lesson could reach the shared vault with a placeholder instead of a rule.</td><td><a href="https://github.com/rmusayevr/claude-harness/pull/24"><code>--rule</code></a> is now required on the first record.</td></tr>
+          <tr><td>Four large heredocs were refused with "unexpected EOF" and no guard decision.</td><td><a href="https://github.com/rmusayevr/claude-harness/pull/25">Tested and ruled out</a>: the guards allow them in under 10 ms. The cause is not the hooks.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout warn"><p><strong>The honest part.</strong> Three of the harness's own changes (#6 to #8) were merged on a green CI run without a fresh-eyes review. A later review found the guards had become weaker. That is why "never weaker" is now a test, and why the riskier harness changes since then went through the same review the project's code gets.</p></div>
+    </div>
+  </section>
+
+  <section id="slow">
+    <div class="clock">8 to 11 minutes</div>
+    <div class="body">
+      <h2>What was slow</h2>
+      <p>By issue #9 the backend test suite took between eight and eleven minutes (510 seconds at 146 tests, 683 at 233). The agent kept waiting on full runs, issue after issue, until the owner asked why it took so long.</p>
+      <p>Timing one unit explained it. On Windows, <code>localhost</code> tries the IPv6 address first. Nothing listened there, so each database connection waited <strong>10.03 seconds</strong> against <strong>0.06 seconds</strong> for <code>127.0.0.1</code>. A suite of repeated connections multiplied it. Pointing the test servers at <code>127.0.0.1</code> took one group of tests from 130 seconds to 12.</p>
+      <p>Both findings were recorded as lessons in the project (<code>localhost-ipv6-windows</code> and <code>time-one-unit-before-waiting</code>), with the cost of each, so the next project does not repeat them.</p>
+    </div>
+  </section>
+
+  <section id="logs">
+    <div class="clock">the logs</div>
+    <div class="body">
+      <h2>What the logs say</h2>
+      <p>The harness records which skills load, by name only and never the prompt, and every guard decision. Here is the project's usage log for the day:</p>
+      <div class="bars" id="usage" aria-label="Skill and agent uses"></div>
+      <ul class="plain">
+        <li><strong>45 of 56 skills never fired.</strong> Most are for situations this app never had, such as debugging production, rollouts and incidents. A few the loop names, <span class="skill">write-commit</span> and <span class="skill">scope-change</span> among them, never fired either, and that is on the list to watch.</li>
+        <li><strong>The guards made 10 decisions in total,</strong> all in the first third of the day: three denials of shell writes to <code>.env</code>, two of <code>rm -rf</code> on a broad path, one of a push to the base branch, and four asks. Some of those were the session's own probes of the guards. They made none during the last eleven PRs.</li>
+        <li><strong>The skills that fired on their own</strong> were the ones whose moment came up: <span class="skill">audit-permissions</span> on accounts, <span class="skill">migrate-data</span> and <span class="skill">review-for-data-loss</span> on the questions table, <span class="skill">review-a-dependency</span> when drafting added a package.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="try">
+    <div class="clock">your turn</div>
+    <div class="body">
+      <h2>Try it on your own project</h2>
+      <p>You need Claude Code, the <code>gh</code> CLI signed in to GitHub, and a repository with CI.</p>
+      <ol class="steps">
+        <li><span class="n">1</span><div><strong>Install the harness</strong><span>Inside Claude Code:</span><pre><code>/plugin marketplace add rmusayevr/claude-harness
+/plugin install harness@harness</code></pre><span>Or from a checkout: <code>node install.mjs install --profile full --target your-project</code></span></div></li>
+        <li><span class="n">2</span><div><strong>Ask it where to begin</strong><span>Type <code>/harness:start</code>. It asks what you are doing and tells you what to say and what will happen.</span></div></li>
+        <li><span class="n">3</span><div><strong>Write the loop file</strong><span>Create <code>.claude/harness-loop.json</code> like the one above: your base branch, the checks that must pass, the paths that are risky, and the things only a person may decide. Keep <code>main</code> protected.</span></div></li>
+        <li><span class="n">4</span><div><strong>Write issues, label them</strong><span>One clear outcome per issue, with a way to check it. Label them <code>ready</code>. The agent can also write an issue itself when it finds work, but only from a concrete finding.</span></div></li>
+        <li class="ok"><span class="n">5</span><div><strong>Run the loop</strong><span>Type <code>/harness:work-the-queue</code> (<code>/work-the-queue</code> if you used the installer). Approve the plans it posts, answer its decisions, and say "merge" when you are satisfied. It will not merge into <code>main</code>.</span></div></li>
+      </ol>
+      <p>Give it a small project first. Check the project's <code>.claude/harness-usage.log</code> after a week with <code>npm run usage</code> in the harness checkout, and delete what you never use.</p>
+    </div>
+  </section>
+
+  <section id="limits">
+    <div class="clock">read this</div>
+    <div class="body">
+      <h2>What this does not show</h2>
+      <ul class="plain">
+        <li><strong>One project, one day, one owner.</strong> The numbers say what happened, not what will happen to you.</li>
+        <li><strong>No comparison.</strong> I did not measure how long the same app would take without the harness, so there is no "time saved" figure on this page.</li>
+        <li><strong>The reviewer's false alarms were not counted.</strong> Its hit rate on real defects looks high, but a clean tally was not kept.</li>
+        <li><strong>The harness was changing during the run.</strong> Some of the eleven and a half hours went to fixing the harness, and the fixes are in the harness repository, not in this tutorial.</li>
+        <li><strong>Staging is live, but thin.</strong> It runs on free Render services with invented demo data. Drafting is not set up there (no Claude key), nobody has clicked through the screens on the live site, and nothing has been merged into <code>main</code>. No real client data has been used in the repository, the tests or the fixtures.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Built from the project's GitHub issues, pull requests and logs. Times are UTC. The harness is open source: <a href="https://github.com/rmusayevr/claude-harness">github.com/rmusayevr/claude-harness</a>.</footer>
+</div>
+
+<script>
+(function () {
+  // PRs: [number, short label, opened (h, UTC), merged (h), kind, triage comments]
+  var h = function (hh, mm) { return hh + mm / 60; };
+  var prs = [
+    [12, 'Backend scaffold', h(12,1), h(12,3), 'f', 1],
+    [13, 'Harness update 1', h(12,5), h(12,32), 'h', 2],
+    [14, 'Frontend scaffold', h(12,39), h(12,41), 'f', 1],
+    [16, 'Harness update 2', h(12,43), h(15,47), 'h', 7],
+    [17, 'CI checks', h(13,6), h(14,41), 'f', 1],
+    [18, 'Accounts', h(15,58), h(16,27), 'f', 3],
+    [19, 'Projects and members', h(16,40), h(16,58), 'f', 1],
+    [20, 'Harness update 3: Opus', h(17,1), h(17,3), 'h', 2],
+    [21, 'Questions', h(17,20), h(17,51), 'f', 1],
+    [22, 'Still open view', h(18,14), h(18,20), 'f', 1],
+    [23, 'Question screens', h(18,37), h(18,47), 'f', 1],
+    [24, 'Drafting', h(19,24), h(20,9), 'f', 1],
+    [26, 'Local PostgreSQL', h(21,43), h(21,52), 'f', 1],
+    [27, 'Fast test hasher', h(21,60), h(22,5), 'f', 1],
+    [28, 'Staging deploy prep', h(22,33), h(22,45), 'f', 1],
+    [29, 'Two lessons', h(23,1), h(23,12), 'h', 1]
+  ];
+  var NS = 'http://www.w3.org/2000/svg';
+  var svg = document.getElementById('timeline');
+  var left = 190, right = 960, top = 14, row = 27, t0 = 11.75, t1 = 23.5;
+  var x = function (t) { return left + (t - t0) / (t1 - t0) * (right - left); };
+  var mk = function (tag, attrs, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    svg.appendChild(e);
+    return e;
+  };
+  var bottom = top + prs.length * row;
+  for (var hr = 12; hr <= 23; hr += 1) {
+    if (hr % 2 === 0 || hr === 23) {
+      mk('line', { x1: x(hr), x2: x(hr), y1: top - 4, y2: bottom, 'class': 'grid' });
+      mk('text', { x: x(hr), y: bottom + 18, 'text-anchor': 'middle', 'class': 'dim' }, hr + ':00');
+    }
+  }
+  prs.forEach(function (p, i) {
+    var y = top + i * row;
+    var w = Math.max(5, x(p[3]) - x(p[2]));
+    mk('text', { x: left - 10, y: y + 15, 'text-anchor': 'end' }, '#' + p[0] + ' ' + p[1]);
+    mk('rect', { x: x(p[2]), y: y + 4, width: w, height: 14, rx: 3, fill: p[4] === 'h' ? 'var(--muted)' : 'var(--build)' });
+    var ex = x(p[2]) + w;
+    mk('circle', { cx: ex, cy: y + 11, r: 5, fill: 'var(--ok)' });
+    for (var d = 0; d < p[5]; d++) mk('circle', { cx: ex + 13 + d * 9, cy: y + 11, r: 3.4, fill: 'var(--blocker)' });
+  });
+  mk('text', { x: right, y: bottom + 36, 'text-anchor': 'end', 'class': 'dim' }, 'UTC, 8 November. Bars start when the PR opened.');
+  svg.setAttribute('viewBox', '0 0 980 ' + (bottom + 46));
+
+  // usage
+  var use = [
+    ['agent: fresh-eyes-reviewer', 25], ['read-your-own-diff', 4], ['triage-review', 2], ['work-the-queue (typed)', 1],
+    ['design-a-test', 1], ['verify-for-real', 1], ['audit-permissions', 1], ['review-for-data-loss', 1],
+    ['migrate-data', 1], ['review-a-dependency', 1], ['handle-secrets', 1], ['promote-lesson', 1]
+  ];
+  var box = document.getElementById('usage');
+  use.forEach(function (u) {
+    var r = document.createElement('div'); r.className = 'bar';
+    r.innerHTML = '<span class="lbl"></span><span class="track"><span class="fill" style="display:block;width:' + (u[1] / 25 * 100) + '%"></span></span><b>' + u[1] + '</b>';
+    r.querySelector('.lbl').textContent = u[0];
+    box.appendChild(r);
+  });
+})();
+</script>
+</body>
+</html>

@@ -16,6 +16,8 @@ the way you already do. New to it? Type `/harness:start`.
 
 **[Try it interactively →](https://rmusayevr.github.io/claude-harness/)** Pick something you might say and step through what happens.
 
+**[Read how a real project went →](https://rmusayevr.github.io/claude-harness/blog/one-day-with-the-harness.html)** Thirteen issues, sixteen pull requests and 25 reviews in one day, with the mistakes and what they changed here.
+
 ## Install
 
 In Claude Code:

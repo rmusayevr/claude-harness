@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-11-09)
+
 ### Added
+- **A write-up of the first full project run**: "One day with the harness", at https://rmusayevr.github.io/claude-harness/blog/one-day-with-the-harness.html. Thirteen issues, sixteen PRs, 25 reviewer runs, what went wrong and what it changed here.
 - The usage log records a subagent's model when the call names one, and the guide says what the log cannot see.
 - **Usage tracking**: the `harness-usage` hook records each skill that loads
   (skill name only, never the prompt) in `.claude/harness-usage.log`, and
