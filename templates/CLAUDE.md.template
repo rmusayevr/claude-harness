@@ -24,7 +24,6 @@ every subagent.
 
 - A project's own rules outrank a skill's defaults. If a skill says to use a
   model, option or default the project's rules forbid, follow the project.
-
 - State what you will not touch before a multi-file change.
 - An improvement noticed mid-change goes in a separate commit or does not go in.
 - If the change crosses a boundary that was not planned, stop and say so rather
@@ -36,6 +35,17 @@ every subagent.
   costs more than an admitted gap, because it is acted on.
 - Do not invent file paths, flags, config keys, or API surfaces. Check, or say
   it is unchecked.
+
+### Skills
+
+Load the matching skill **before** you act, not after, and do not work from
+memory when one applies:
+
+- deleting or overwriting anything not in git, or touching production: `risky-op`
+- adding a package: `review-a-dependency`
+- starting in an area, or after a failure: `recall-lessons`
+- stopping mid-task or handing over: `handoff`
+- writing a bug report or an issue: `write-a-bug-report`
 
 ### Guards
 
