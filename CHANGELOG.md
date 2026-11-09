@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- The CLAUDE.md block has a **Skills** section: five situations (deleting data, adding a package, starting in an area, handing over, writing a bug report) and the skill to load for each. Skills fired reliably only where the loop named them; in ad hoc work the model did the job by hand. A test checks that every skill the block names exists, that its markers carry the release version, and that it stays under 80 lines. To judge it, read `npm run usage` after a week in a real project: those skills should show `auto` uses outside the loop. If they do not, the section comes out.
+
 ## 0.3.0 (2026-11-09)
 
 ### Added
