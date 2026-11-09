@@ -74,7 +74,7 @@ Everything else happens without being asked.
 ## Learn more
 
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md): how to add a rule or report a guard that over-blocks
-- [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 53 checklists, grouped by situation
+- [All skills](./GUIDE.md#the-skill-catalogue-by-situation): the 54 checklists, grouped by situation
 - [`GUIDE.md`](./GUIDE.md): the full guide, including when *not* to use it
 - [`TUTORIAL.md`](./TUTORIAL.md): a recorded run on a real project
 - [`EXTENDING.md`](./EXTENDING.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md): read before extending it

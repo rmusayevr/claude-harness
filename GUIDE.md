@@ -22,7 +22,7 @@ making it worse. If you only read one section, read
 
 ## What this is, and what it is not
 
-**It is a discipline layer.** 53 skills, 3 enforcement hooks, 1 review subagent,
+**It is a discipline layer.** 54 skills, 3 enforcement hooks, 1 review subagent,
 and a lesson vault, packaged as a Claude Code plugin you install into every
 project. It changes *how* work gets done — what gets checked, what gets
 verified, what gets refused — not *what* gets built.
@@ -103,7 +103,7 @@ Skills appear namespaced: `/harness:reproduce-first`.
 - Updates arrive by bumping the version and running `/plugin marketplace update`
 - Nothing is written into your project
 - **Stack packs in `rules/` are not loaded** — a plugin has no profile
-  mechanism, so you get the 53 stack-agnostic core skills only
+  mechanism, so you get the 54 stack-agnostic core skills only
 
 ### Mode B — copied into the project
 
@@ -207,6 +207,7 @@ stage. `*` means you type it (`/harness:<name>`); the rest fire on their own.
 |---|---|
 | Choosing a library, framework, or base image | `review-a-dependency` |
 | A choice that will be expensive to reverse | `write-an-adr`* |
+| The look of a new UI, or a redesign | `design-direction` *(you pick one of three; it writes `DESIGN.md`)* |
 | Before writing a helper that may already exist | `find-prior-art` |
 
 #### 2. Building
@@ -328,7 +329,7 @@ system getting better.
 
 ## The skill catalogue, by situation
 
-All 53 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
+All 54 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 
 **Diagnosis (8)** — `reproduce-first` · `trace-a-failure` · `isolate-the-layer` ·
 `diagnose-a-hang` · `bisect-the-change` · `environment-divergence` ·
@@ -354,6 +355,8 @@ All 53 core skills. `*` = slash-only, invisible to Claude, zero listing cost.
 
 **Operational risk (6)** — `risky-op` · `handle-secrets` · `mitigate-first` ·
 `manage-a-rollout`* · `schedule-a-job` · `survive-a-dependency-outage`
+
+**Design (1)** — `design-direction`
 
 **Delivery loop (2)** — `work-the-queue`* · `triage-review`
 
@@ -651,7 +654,7 @@ node scripts/vault.mjs list --project-dir .
 |---|---|
 | `.claude-plugin/plugin.json` | Plugin manifest — the only file in that directory |
 | `.claude-plugin/marketplace.json` | Catalog, so the repo works as a marketplace |
-| `skills/<name>/SKILL.md` | The 53 core skills |
+| `skills/<name>/SKILL.md` | The 54 core skills |
 | `rules/<stack>/<name>/SKILL.md` | Stack packs, installed selectively |
 | `agents/fresh-eyes-reviewer.md` | The review subagent |
 | `hooks/hooks.json` | **Single source of truth** for hook wiring |
