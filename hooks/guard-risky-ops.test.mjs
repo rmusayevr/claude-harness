@@ -140,12 +140,51 @@ describe('commands that wipe a local data store', () => {
     'redis-cli FLUSHALL', 'redis-cli -n 2 flushdb', 'docker exec redis redis-cli FLUSHALL',
     'mongosh --eval "db.dropDatabase()"', 'dropdb myapp', 'psql -c "DROP DATABASE app"', 'mysql -e "drop schema app"',
   ];
-  test('each one asks, and the reason points at risky-op', () => {
-    for (const c of WIPES) {
-      const got = expect(bash(c), 'ask', c);
-      assert.equal(got.rule, 'data-wipe', c);
-      assert.match(got.reason, /risky-op/, c);
-    }
+  test('each one asks', () => {
+    for (const c of WIPES) assert.equal(expect(bash(c), 'ask', c).rule, 'data-wipe', c);
+  });
+
+  // Found by a fresh-eyes review of the first version.
+  const BS = String.fromCharCode(92);
+  const SPELLINGS = [
+    // global options before the verb, a path or .exe, double spaces
+    'docker compose -f x.yml down -v', 'docker compose -p p down -v', 'docker compose --project-name p down --volumes',
+    'docker-compose -f docker-compose.prod.yml down -v', 'docker -H tcp://h:2375 volume rm x', 'docker --context dev volume rm x',
+    '/usr/bin/docker volume rm x', 'docker.exe volume rm x', 'docker  volume  rm x',
+    // sudo with options, env, nohup, xargs
+    'sudo -u postgres dropdb app', 'sudo -u redis redis-cli FLUSHALL', 'sudo -E docker volume rm x',
+    'env DOCKER_HOST=x docker volume rm x', 'nohup docker volume prune -f', 'docker volume ls -q | xargs docker volume rm',
+    // inside a container, a cluster or a platform
+    'docker exec db dropdb -U postgres app', 'docker compose exec db dropdb -U postgres app',
+    'docker compose exec db psql -U postgres -c "DROP DATABASE app"', 'docker exec -i db psql -U postgres -c "drop database app"',
+    'kubectl exec db-0 -- psql -c "DROP DATABASE app"', 'heroku run python manage.py flush --noinput',
+    // statements that travel as data
+    'echo FLUSHALL | redis-cli', `printf "FLUSHDB${BS}n" | redis-cli -n 1`, 'echo "DROP DATABASE app;" | psql', 'echo "db.dropDatabase()" | mongosh app',
+    'psql <<EOF\nDROP DATABASE app;\nEOF', "psql -U postgres <<'SQL'\nDROP SCHEMA public CASCADE;\nSQL",
+    // other spellings
+    'podman-compose down -v', 'docker compose rm -sfv', 'python manage.py --settings x flush', 'mysqladmin -f drop app',
+    'mongosh --eval "db.runCommand({dropDatabase: 1})"', 'keydb-cli FLUSHALL',
+  ];
+  test('the spellings a review found are asked too', () => {
+    for (const c of SPELLINGS) assert.equal(expect(bash(c), 'ask', c).rule, 'data-wipe', c);
+  });
+
+  test('--remove-orphans is not -v, and a key named FLUSHALL is not a flush', () => {
+    for (const c of [
+      'docker compose down --remove-orphans', 'docker-compose down --remove-orphans', 'docker compose down --rmi all --remove-orphans',
+      'docker compose down --remove-orphans && docker compose up -d --build',
+      'redis-cli DEL FLUSHALL', 'redis-cli GET flushdb', 'docker exec redis redis-cli SET flushall 1',
+      'docker compose exec web ./down.sh -v', 'python manage.py help flush', 'psql -c "select 1" -d dropdb_test',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  test('asking about a command is not running it', () => {
+    for (const c of ['dropdb --help', 'dropdb --version', 'docker volume rm --help', 'python manage.py flush --help']) expect(bash(c), 'allow', c);
+  });
+
+  test('sudo options no longer hide the other rules either', () => {
+    expect(bash('sudo -u deploy rm -rf /'), 'deny', 'rm -rf / behind sudo -u');
+    expect(bash('sudo -E git reset --hard HEAD~3'), 'ask', 'git reset behind sudo -E');
   });
 
   test('nearby commands that keep the data are left alone', () => {
@@ -175,7 +214,7 @@ describe('commands that wipe a local data store', () => {
 describe('an ask names the skill to load', () => {
   test('through the process, the reason ends with the skill', async () => {
     const cases = [
-      ['docker volume rm x', 'data-wipe', null], // already names risky-op in its own text
+      ['docker volume rm x', 'data-wipe', 'risky-op'],
       ['rm -rf ./data', 'rm-rf-nondisposable', 'risky-op'],
       ['git reset --hard HEAD~3', 'git-discard-worktree', 'risky-op'],
       ['terraform apply', 'deploy-command', 'risky-op'],

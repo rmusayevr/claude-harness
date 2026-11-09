@@ -225,9 +225,14 @@ function plainSegments(command) {
 function tokens(segment) {
   const raw = segment.match(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/g) ?? [];
   const out = raw.map(unquote);
-  while (out.length && (out[0] === 'sudo' || /^[A-Z_][A-Z0-9_]*=/.test(out[0]))) out.shift();
+  while (out.length && (out[0] === 'sudo' || /^[A-Z_][A-Z0-9_]*=/.test(out[0]))) {
+    const wasSudo = out.shift() === 'sudo';
+    // `sudo -u postgres dropdb x`: the options are not the command (they hid every rule behind sudo).
+    if (wasSudo) while (out.length && out[0].startsWith('-')) if (SUDO_VALUE_FLAGS.has(out.shift())) out.shift();
+  }
   return out;
 }
+const SUDO_VALUE_FLAGS = new Set(['-u', '-g', '-h', '-p', '-C', '-D', '-R', '-T', '-U', '--user', '--group', '--host', '--prompt', '--chdir', '--chroot', '--command-timeout', '--other-user']);
 
 // ---------------------------------------------------------------- rule data
 
@@ -390,7 +395,7 @@ function checkDeploy(t, segment) {
  * Bought by sual-cavab: the agent deleted Docker volumes without looking at
  * what was in them, and said so afterwards. Nothing covered it, and a skill
  * the model may or may not load is the wrong place for a decision a command
- * spells out. The reason points at `risky-op`.
+ * spells out. The ask ends by naming `risky-op` (see skillHint).
  *
  * Known gaps, left out until they have an incident (guards that over-block get
  * switched off): cloud and hosted deletions (`aws s3 rb`, `gcloud ... delete`,
@@ -399,55 +404,111 @@ function checkDeploy(t, segment) {
  * `shred`, `find -delete`), and `docker rm` of a container, which is
  * regenerable.
  */
-// What may stand in front of the program: a runner or a container exec, nothing that prints text.
-const WIPE_WRAPPERS = new Set(['docker', 'docker-compose', 'podman', 'kubectl', 'uv', 'poetry', 'pipenv', 'pdm', 'ssh', 'env', 'time', 'nohup', 'npx']);
+// A program may run inside one of these (a container, a cluster, a runner, a host).
+// Nothing that only prints text is on the list, so `echo docker volume rm` is not a wipe.
+const WIPE_WRAPPERS = new Set(['docker', 'docker-compose', 'podman', 'podman-compose', 'kubectl', 'uv', 'poetry', 'pipenv', 'pdm', 'ssh', 'npx', 'heroku', 'fly', 'flyctl']);
+// Prefixes that run the next command: `env X=1 cmd`, `nohup cmd`, `xargs cmd`.
+const RUNNERS = new Set(['env', 'nohup', 'time', 'nice', 'command', 'xargs']);
+const VALUE_FLAGS = { env: new Set(['-u', '-C', '-S']), xargs: new Set(['-I', '-n', '-P', '-d', '-L', '-l', '-s', '-E', '-a']), nice: new Set(['-n']) };
+const exeName = (x) => base(x ?? '').replace(/\.exe$/i, '');
 const isFlag = (x) => x.startsWith('-');
 
-function checkDataWipe(t, segment) {
-  const first = base(t[0] ?? '');
+/** Drop `env X=1`, `nohup`, `xargs -n1` and the like from the front, to reach the command that runs. */
+function unwrap(t) {
+  let i = 0;
+  while (i < t.length && RUNNERS.has(exeName(t[i]))) {
+    const w = exeName(t[i++]);
+    const takes = VALUE_FLAGS[w] ?? new Set();
+    while (i < t.length && (isFlag(t[i]) || (w === 'env' && /^[A-Za-z_][A-Za-z0-9_]*=/.test(t[i])))) i += takes.has(t[i]) ? 2 : 1;
+  }
+  return t.slice(i);
+}
+
+// `echo FLUSHALL | redis-cli`, `psql <<EOF ... DROP DATABASE ... EOF`: the statement travels as data, so no
+// single segment shows it. Read the whole command. Plain text that merely mentions both can ask too; that
+// is the same price the plain split already charges.
+const WIPE_WORDS = '(?:flush(?:all|db)|drop\\s+(?:database|schema)|dropDatabase)';
+const DB_CLIENTS = '(?:redis-cli|valkey-cli|keydb-cli|psql|mysql|mariadb|mongosh|mongo)';
+const PIPED_WIPE = new RegExp(`\\b(?:echo|printf)\\b[^|\\n]*\\b${WIPE_WORDS}\\b[^|\\n]*\\|\\s*(?:\\S*/)?${DB_CLIENTS}\\b`, 'i');
+const HEREDOC_WIPE = new RegExp(`\\b${DB_CLIENTS}\\b[^\\n|;&]*<<-?\\s*['"]?\\w+['"]?[^\\n]*\\n[\\s\\S]*?\\b${WIPE_WORDS}\\b`, 'i');
+function checkPipedWipe(command) {
+  const c = String(command ?? '');
+  if (!PIPED_WIPE.test(c) && !HEREDOC_WIPE.test(c)) return null;
+  return {
+    decision: 'ask',
+    rule: 'data-wipe',
+    reason: 'This sends a statement that empties or drops a database to a database client. The data is gone once it runs. Look at what is in it first, and say so if it was never backed up.',
+  };
+}
+
+function checkDataWipe(t0, segment) {
+  const t = unwrap(t0);
+  if (t.length === 0) return null;
+  if (t.some((x) => x === '--help' || x === '--version')) return null; // asking about the command is not running it
+  const first = exeName(t[0]);
   const s = t.join(' ');
+  const wrapped = WIPE_WRAPPERS.has(first);
+  /** The program is the command itself, or runs inside a wrapper. */
+  const runs = (i) => i >= 0 && (i === 0 || wrapped);
   const hit = (what) => ({
     decision: 'ask',
     rule: 'data-wipe',
-    reason: `${what}. The data is gone once this runs. Look at what is in it first (the \`risky-op\` skill), and say so if it was never backed up.`,
+    reason: `${what}. The data is gone once this runs. Look at what is in it first, and say so if it was never backed up.`,
   });
 
-  // Docker: volumes hold the data; images and containers are regenerable.
-  if (first === 'docker' || first === 'docker-compose' || first === 'podman') {
-    if (/^(docker|podman)\s+(volume\s+(rm|remove|prune)|compose\s+down\b.*(\s-\S*v|\s--volumes)|system\s+prune\b.*--volumes)/.test(s) ||
-        /^docker-compose\s+down\b.*(\s-\S*v|\s--volumes)/.test(s)) {
+  // Docker: volumes hold the data; images and containers are regenerable. Global options
+  // (`-f x.yml`, `--context dev`) may sit before the verb, so look for the verb, not its position.
+  if (/^(docker|podman)(-compose)?$/.test(first)) {
+    const at = (w) => t.indexOf(w, 1);
+    const insideContainer = (i) => t.slice(1, i).some((x) => x === 'run' || x === 'exec'); // `down` etc. is then an argument
+    const next = (i) => t.slice(i + 1).find((x) => !isFlag(x)) ?? '';
+    const vFlag = (x) => /^-[a-zA-Z]*v[a-zA-Z]*$/.test(x) || x === '--volumes'; // whole tokens: not `--remove-orphans`
+    const vol = at('volume');
+    if (vol > 0 && !insideContainer(vol) && /^(rm|remove|prune)$/.test(next(vol))) {
       return hit('This deletes Docker volumes, which is where a container keeps its data');
     }
-    if (/^(docker|podman)\s+(container\s+)?rm\b/.test(s) && t.some((x) => /^-[a-zA-Z]*v[a-zA-Z]*$/.test(x) || x === '--volumes')) {
-      return hit('`docker rm -v` deletes the container\'s anonymous volumes with it');
+    const sys = at('system');
+    if (sys > 0 && !insideContainer(sys) && next(sys) === 'prune' && t.includes('--volumes')) {
+      return hit('`docker system prune --volumes` deletes every unused volume');
+    }
+    const down = at('down');
+    if (down > 0 && !insideContainer(down) && (first.endsWith('compose') || t.slice(1, down).includes('compose')) && t.slice(down + 1).some(vFlag)) {
+      return hit('`compose down -v` deletes the stack\'s volumes');
+    }
+    const rm = at('rm');
+    if (rm > 0 && !insideContainer(rm) && t.slice(rm + 1).some(vFlag)) {
+      return hit('`rm -v` deletes the container\'s anonymous volumes with it');
     }
   }
 
   // Django: `flush` deletes every row. `flushsessions` is a different command.
-  const runsDjango = WIPE_WRAPPERS.has(first) || /^(python[\d.]*|py|django-admin|manage\.py|\.\/manage\.py)$/.test(first);
-  if (runsDjango) {
-    const i = t.findIndex((x) => /(^|\/)manage\.py$/.test(x) || x === 'django-admin');
-    if (i >= 0 && t.slice(i + 1).find((x) => !isFlag(x)) === 'flush') {
-      return hit('`manage.py flush` deletes every row in the database');
-    }
+  const manage = t.findIndex((x) => /(^|\/)(manage\.py|django-admin(\.py)?)$/.test(x));
+  if (runs(manage) || (manage > 0 && /^(python[\d.]*|py)$/.test(first))) {
+    let i = manage + 1;
+    while (i < t.length && isFlag(t[i])) i += new Set(['--settings', '--pythonpath', '-v', '--verbosity']).has(t[i]) ? 2 : 1;
+    if (t[i] === 'flush') return hit('`manage.py flush` deletes every row in the database');
   }
-  if (/^(python[\d.]*|py)$/.test(first) && t.includes('flush') && t.includes('django') && t.includes('-m')) {
+  if (/^(python[\d.]*|py)$/.test(first) && t[t.indexOf('-m') + 1] === 'django' && t[t.indexOf('django') + 1] === 'flush') {
     return hit('`django flush` deletes every row in the database');
   }
 
   // Redis and MongoDB, and dropping a database.
-  if (WIPE_WRAPPERS.has(first) || first === 'redis-cli' || first === 'valkey-cli') {
-    if (t.some((x) => /^flush(all|db)$/i.test(x)) && t.some((x) => /^(redis|valkey)-cli$/.test(base(x)))) {
-      return hit('`FLUSHALL` and `FLUSHDB` empty a Redis server');
-    }
+  const redis = t.findIndex((x) => /^(redis|valkey|keydb)-cli$/.test(exeName(x)));
+  if (runs(redis)) {
+    // The Redis command is the first argument that is not an option, so a key named FLUSHALL is not one.
+    let i = redis + 1;
+    while (i < t.length && isFlag(t[i])) i += new Set(['-h', '-p', '-a', '-n', '-u', '-t', '-r', '-i', '-d', '--user', '--pass', '--cacert', '--cert', '--key', '--sni']).has(t[i]) ? 2 : 1;
+    if (/^flush(all|db)$/i.test(t[i] ?? '')) return hit('`FLUSHALL` and `FLUSHDB` empty a Redis server');
   }
-  if ((WIPE_WRAPPERS.has(first) || /^(mongo|mongosh)$/.test(first)) && t.some((x) => /^(mongo|mongosh)$/.test(base(x))) && /\bdropDatabase\s*\(/.test(s)) {
-    return hit('`dropDatabase()` deletes a whole MongoDB database');
+  if (runs(t.findIndex((x) => /^(mongo|mongosh)$/.test(exeName(x)))) && /\bdropDatabase\b/.test(s)) {
+    return hit('`dropDatabase` deletes a whole MongoDB database');
   }
-  if (first === 'dropdb') return hit('`dropdb` deletes a whole PostgreSQL database');
-  if (/^(psql|mysql|mariadb|sqlite3)$/.test(first) && /\bdrop\s+(database|schema)\b/i.test(s)) {
+  if (runs(t.findIndex((x) => exeName(x) === 'dropdb'))) return hit('`dropdb` deletes a whole PostgreSQL database');
+  if (runs(t.findIndex((x) => /^(psql|mysql|mariadb|sqlite3)$/.test(exeName(x)))) && /\bdrop\s+(database|schema)\b/i.test(s)) {
     return hit('This drops a whole database or schema');
   }
+  const admin = t.findIndex((x) => exeName(x) === 'mysqladmin');
+  if (runs(admin) && t.slice(admin + 1).includes('drop')) return hit('`mysqladmin drop` deletes a whole MySQL database');
   return null;
 }
 
@@ -577,7 +638,7 @@ const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkDataWip
  * guard, and this one cannot be weaker than it, only stricter.
  */
 function checkBash(command) {
-  let ask = null;
+  let ask = checkPipedWipe(command); // a statement piped or heredoc'd to a database client: only the whole command shows it
   for (const [split, escapes] of [[segments(command), true], [plainSegments(command), false]]) for (const segment of split) {
     const t = tokens(segment);
     if (t.length === 0) continue;
@@ -739,7 +800,7 @@ const SKILL_FOR = [
   [/^(edit-applied-migration|migration-against-prod|raw-ddl-against-prod)/, 'migrate-data'],
 ];
 export function skillHint(decision) {
-  if (decision?.decision !== 'ask' || /`risky-op`/.test(decision.reason)) return '';
+  if (decision?.decision !== 'ask') return '';
   const skill = SKILL_FOR.find(([re]) => re.test(decision.rule))?.[1];
   return skill ? ` Load the \`${skill}\` skill before going on.` : '';
 }
