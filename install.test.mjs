@@ -59,7 +59,6 @@ describe('profiles', () => {
     assert.equal(run('install', '--profile', 'core').code, 0);
     assert.ok(existsSync(p('.claude/skills/work-the-queue/reference.md')), 'reference.md');
     assert.ok(existsSync(p('.claude/skills/design-direction/design.template.md')), 'design.template.md');
-    assert.ok(Object.keys(manifest().files.map((f) => f.to)).length > 0);
     assert.ok(manifest().files.some((f) => f.to === '.claude/skills/design-direction/design.template.md'), 'tracked in the manifest');
   });
 

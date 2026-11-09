@@ -20,17 +20,18 @@ owner accepted.
   --muted: ;
   --line: ;
   --accent: ;
-  --good: ;
-  --warn: ;
-  --bad: ;
+  /* one text and background pair for each status the product has: */
+  --status-open-ink: ;     --status-open-bg: ;
+  --status-done-ink: ;     --status-done-bg: ;
+  --status-error-ink: ;    --status-error-bg: ;
 }
 @media (prefers-color-scheme: dark) {
   :root { /* the same names, dark values */ }
 }
 ```
 
-**Type.** Display face, body face, data face; each with its fallback stack.
-Scale: sizes and line heights. Digits that line up use tabular figures.
+**Type.** The faces (a system stack is fine) and the reason for each, with fallback
+stacks. Scale: sizes and line heights. Digits that line up use tabular figures.
 
 **Space and shape.** The spacing scale, the radius, the borders, the shadows
 (or the decision to have none).

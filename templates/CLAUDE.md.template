@@ -46,7 +46,7 @@ memory when one applies:
 - starting in an area, or after a failure: `recall-lessons`
 - stopping mid-task or handing over: `handoff`
 - writing a bug report or an issue: `write-a-bug-report`
-- building or restyling UI in a project with no DESIGN.md: `design-direction`
+- the look of a new UI or a redesign, with no DESIGN.md yet: `design-direction`
 
 ### Guards
 

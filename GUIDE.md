@@ -173,7 +173,7 @@ occasion. It will refuse a hypothetical, and refusing is the feature.
 /harness:harness-audit
 ```
 
-Expect it to report 52 of its 55 skills with no incident recorded. That is correct: the
+Expect it to report 49 of its 56 skills with no incident recorded. That is correct: the
 harness ships with reasoning, not with your history. Those fill as you use it.
 
 ---
@@ -207,7 +207,7 @@ stage. `*` means you type it (`/harness:<name>`); the rest fire on their own.
 |---|---|
 | Choosing a library, framework, or base image | `review-a-dependency` |
 | A choice that will be expensive to reverse | `write-an-adr`* |
-| The look of a new UI, or a redesign | `design-direction` *(you pick one of three; it writes `DESIGN.md`)* |
+| The look of a new UI, or a redesign | `design-direction` *(you pick one of three, or it writes down the look you already have, in `DESIGN.md`)* |
 | Before writing a helper that may already exist | `find-prior-art` |
 
 #### 2. Building

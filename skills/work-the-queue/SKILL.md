@@ -39,8 +39,10 @@ more than 3 non-test files), **Small** (anything else). Never size down.
 - A new package in the plan: run `review-a-dependency` before proposing it.
 - Risky: before building, run what the path calls for (`audit-permissions`,
   `migrate-data`, `review-for-data-loss`). They are pinned to Opus.
-- UI work: with `DESIGN.md`, follow it. Without one, run `design-direction`
-  first and stop for the owner's pick.
+- UI work (a new screen or a new look; not copy, a bug, or a one-element fix
+  that keeps the current look): follow `DESIGN.md` at the repo root. Without
+  one, run `design-direction`, post its options on that issue, and park every
+  UI issue that waits on the pick; the rest of the queue goes on.
 - Small: no plan comment; go to step 3.
 - Medium and Risky: post the plan as an issue comment and **stop for approval**.
   While waiting, plan the next issues too, so the user approves them in one go.
@@ -75,7 +77,7 @@ Fix blockers, ask decisions, repeat until ready, or stop after three rounds.
 
 ## Park, don't wait
 
-A step that needs a human (a deploy, a credential, a design file) and blocks
+A step that needs a human (a deploy, a credential, a design file or pick) and blocks
 no other issue is parked: comment what is needed, add the `parkedLabel`, take
 the next issue. Resume it when the user says the thing is done.
 
@@ -85,7 +87,7 @@ you are and what is next (`handoff`); a new session resumes from that alone.
 ## Stop and ask only for
 
 Business rules (money, who may do what, reservations, identity, or anything in
-`stopFor`), a visual direction, new dependencies or services, work bigger than its plan, a guard
+`stopFor`), new dependencies or services, work bigger than its plan, a guard
 that denied, a red base, or an empty queue with no problem to write up. Ask one
 question with a recommendation first.
 
