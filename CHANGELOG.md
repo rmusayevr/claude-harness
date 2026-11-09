@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- `guard-risky-ops` asks before a command that wipes a local data store: `docker volume rm`/`prune`, `docker compose down -v`, `docker system prune --volumes`, `docker rm -v`, `manage.py flush`, `FLUSHALL`/`FLUSHDB`, `dropDatabase()`, `dropdb`, `DROP DATABASE`. Bought by sual-cavab, where the agent deleted Docker volumes without looking inside them. Replayed against 11,589 real commands, it changed 2, both real volume deletions.
+- An ask now ends by naming the skill with the procedure (`risky-op`, `handle-secrets`, `review-a-config-change`, `migrate-data`), so the model is pointed at it at the moment of action.
+
 ## 0.3.0 (2026-11-09)
 
 ### Added

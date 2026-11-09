@@ -129,6 +129,80 @@ describe('ask', () => {
 // ALLOW - the false-positive suite. These are ordinary work.
 // ===========================================================================
 
+describe('commands that wipe a local data store', () => {
+  // The incident: sual-cavab deleted Docker volumes without looking inside them.
+  const WIPES = [
+    'docker volume rm sual_pgdata', 'docker volume remove x', 'docker volume prune -f', 'docker system prune -a --volumes -f',
+    'docker compose down -v', 'docker compose down --volumes', 'docker-compose down -v', 'docker rm -v web', 'docker rm -fv web',
+    'docker container rm -v web', 'sudo docker volume rm x', 'podman volume prune',
+    'python manage.py flush --noinput', 'python3 manage.py flush', './manage.py flush', 'uv run python manage.py flush',
+    'poetry run python manage.py flush', 'docker compose exec web python manage.py flush --noinput', 'django-admin flush', 'python -m django flush',
+    'redis-cli FLUSHALL', 'redis-cli -n 2 flushdb', 'docker exec redis redis-cli FLUSHALL',
+    'mongosh --eval "db.dropDatabase()"', 'dropdb myapp', 'psql -c "DROP DATABASE app"', 'mysql -e "drop schema app"',
+  ];
+  test('each one asks, and the reason points at risky-op', () => {
+    for (const c of WIPES) {
+      const got = expect(bash(c), 'ask', c);
+      assert.equal(got.rule, 'data-wipe', c);
+      assert.match(got.reason, /risky-op/, c);
+    }
+  });
+
+  test('nearby commands that keep the data are left alone', () => {
+    for (const c of [
+      'docker ps', 'docker volume ls', 'docker volume inspect x', 'docker volume create x', 'docker compose down', 'docker compose up -d',
+      'docker compose logs -f', 'docker system prune -f', 'docker image prune -a', 'docker rm web', 'docker rm -f web', 'docker rmi img',
+      'docker run --rm -v data:/data alpine ls', 'docker run -v data:/data alpine ls',
+      'python manage.py migrate', 'python manage.py flushsessions', 'python manage.py shell', 'python manage.py test',
+      'redis-cli GET key', 'redis-cli --scan', 'mongosh --eval "db.users.find()"', 'psql -c "SELECT 1"', 'psql -c "DROP TABLE tmp"',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  test('text that merely mentions a wipe is not one', () => {
+    for (const c of [
+      'echo docker volume rm x', 'grep -r "manage.py flush" .', 'cat README.md', 'git commit -m "docker volume rm notes"',
+      'git log --grep="redis-cli FLUSHALL"',
+    ]) expect(bash(c), 'allow', c);
+  });
+
+  test('a wipe behind another command, or inside bash -c, is still seen', () => {
+    expect(bash('cd backend && python manage.py flush --noinput'), 'ask', 'after cd');
+    expect(bash('bash -c "docker volume prune -f"'), 'ask', 'inside bash -c');
+    expect(bash('true; docker compose down -v'), 'ask', 'after a separator');
+  });
+});
+
+describe('an ask names the skill to load', () => {
+  test('through the process, the reason ends with the skill', async () => {
+    const cases = [
+      ['docker volume rm x', 'data-wipe', null], // already names risky-op in its own text
+      ['rm -rf ./data', 'rm-rf-nondisposable', 'risky-op'],
+      ['git reset --hard HEAD~3', 'git-discard-worktree', 'risky-op'],
+      ['terraform apply', 'deploy-command', 'risky-op'],
+    ];
+    for (const [command, rule, skill] of cases) {
+      const { out } = await runHook(JSON.stringify(bash(command)));
+      const reason = JSON.parse(out).hookSpecificOutput.permissionDecisionReason;
+      assert.match(reason, new RegExp(`^\\[harness:${rule}\\]`), command);
+      assert.match(reason, /risky-op/, command);
+      if (skill) assert.match(reason, /Load the `risky-op` skill before going on\.$/, command);
+    }
+  });
+
+  test('a credential or production-config write asks with its own skill', async () => {
+    const a = JSON.parse((await runHook(JSON.stringify(write('config/production.json')))).out).hookSpecificOutput;
+    assert.equal(a.permissionDecision, 'ask');
+    assert.match(a.permissionDecisionReason, /Load the `review-a-config-change` skill/);
+    const b = JSON.parse((await runHook(JSON.stringify(write('keys/server.pem')))).out).hookSpecificOutput;
+    assert.match(b.permissionDecisionReason, /Load the `handle-secrets` skill/);
+  });
+
+  test('a denial gets no hint', async () => {
+    const { out } = await runHook(JSON.stringify(bash('git push --force origin main')));
+    assert.doesNotMatch(JSON.parse(out).hookSpecificOutput.permissionDecisionReason, /Load the/);
+  });
+});
+
 describe('migrations: the write is reversible, the edit is not', () => {
   // Bought by a real incident: 'ask' on every NEW migration made non-interactive
   // runs impossible — there is no operator to approve, so ask is a hard block,

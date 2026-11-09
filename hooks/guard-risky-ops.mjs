@@ -385,6 +385,73 @@ function checkDeploy(t, segment) {
 }
 
 /**
+ * Commands that wipe a local data store.
+ *
+ * Bought by sual-cavab: the agent deleted Docker volumes without looking at
+ * what was in them, and said so afterwards. Nothing covered it, and a skill
+ * the model may or may not load is the wrong place for a decision a command
+ * spells out. The reason points at `risky-op`.
+ *
+ * Known gaps, left out until they have an incident (guards that over-block get
+ * switched off): cloud and hosted deletions (`aws s3 rb`, `gcloud ... delete`,
+ * `gh repo delete`, `npm unpublish`), git history (`git branch -D`,
+ * `git push --delete`, `git stash drop`), raw disk and file tools (`dd`,
+ * `shred`, `find -delete`), and `docker rm` of a container, which is
+ * regenerable.
+ */
+// What may stand in front of the program: a runner or a container exec, nothing that prints text.
+const WIPE_WRAPPERS = new Set(['docker', 'docker-compose', 'podman', 'kubectl', 'uv', 'poetry', 'pipenv', 'pdm', 'ssh', 'env', 'time', 'nohup', 'npx']);
+const isFlag = (x) => x.startsWith('-');
+
+function checkDataWipe(t, segment) {
+  const first = base(t[0] ?? '');
+  const s = t.join(' ');
+  const hit = (what) => ({
+    decision: 'ask',
+    rule: 'data-wipe',
+    reason: `${what}. The data is gone once this runs. Look at what is in it first (the \`risky-op\` skill), and say so if it was never backed up.`,
+  });
+
+  // Docker: volumes hold the data; images and containers are regenerable.
+  if (first === 'docker' || first === 'docker-compose' || first === 'podman') {
+    if (/^(docker|podman)\s+(volume\s+(rm|remove|prune)|compose\s+down\b.*(\s-\S*v|\s--volumes)|system\s+prune\b.*--volumes)/.test(s) ||
+        /^docker-compose\s+down\b.*(\s-\S*v|\s--volumes)/.test(s)) {
+      return hit('This deletes Docker volumes, which is where a container keeps its data');
+    }
+    if (/^(docker|podman)\s+(container\s+)?rm\b/.test(s) && t.some((x) => /^-[a-zA-Z]*v[a-zA-Z]*$/.test(x) || x === '--volumes')) {
+      return hit('`docker rm -v` deletes the container\'s anonymous volumes with it');
+    }
+  }
+
+  // Django: `flush` deletes every row. `flushsessions` is a different command.
+  const runsDjango = WIPE_WRAPPERS.has(first) || /^(python[\d.]*|py|django-admin|manage\.py|\.\/manage\.py)$/.test(first);
+  if (runsDjango) {
+    const i = t.findIndex((x) => /(^|\/)manage\.py$/.test(x) || x === 'django-admin');
+    if (i >= 0 && t.slice(i + 1).find((x) => !isFlag(x)) === 'flush') {
+      return hit('`manage.py flush` deletes every row in the database');
+    }
+  }
+  if (/^(python[\d.]*|py)$/.test(first) && t.includes('flush') && t.includes('django') && t.includes('-m')) {
+    return hit('`django flush` deletes every row in the database');
+  }
+
+  // Redis and MongoDB, and dropping a database.
+  if (WIPE_WRAPPERS.has(first) || first === 'redis-cli' || first === 'valkey-cli') {
+    if (t.some((x) => /^flush(all|db)$/i.test(x)) && t.some((x) => /^(redis|valkey)-cli$/.test(base(x)))) {
+      return hit('`FLUSHALL` and `FLUSHDB` empty a Redis server');
+    }
+  }
+  if ((WIPE_WRAPPERS.has(first) || /^(mongo|mongosh)$/.test(first)) && t.some((x) => /^(mongo|mongosh)$/.test(base(x))) && /\bdropDatabase\s*\(/.test(s)) {
+    return hit('`dropDatabase()` deletes a whole MongoDB database');
+  }
+  if (first === 'dropdb') return hit('`dropdb` deletes a whole PostgreSQL database');
+  if (/^(psql|mysql|mariadb|sqlite3)$/.test(first) && /\bdrop\s+(database|schema)\b/i.test(s)) {
+    return hit('This drops a whole database or schema');
+  }
+  return null;
+}
+
+/**
  * Files a shell segment writes to.
  *
  * The write rules below decide from a path, and until now they could only be
@@ -502,7 +569,7 @@ function checkBashWrite(t, segment, escapes = true) {
  * .env` matched `rm-rf-nondisposable` (ask), the `.env` write was never
  * checked, the permission mode auto-approved the ask, and `.env` was written.
  */
-const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkBashWrite];
+const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkDataWipe, checkBashWrite];
 
 /**
  * The shell-aware segments are read with escapes; the plain split's are read
@@ -652,11 +719,29 @@ async function main() {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: decision.decision,
-        permissionDecisionReason: `[harness:${decision.rule}] ${decision.reason}`,
+        permissionDecisionReason: `[harness:${decision.rule}] ${decision.reason}${skillHint(decision)}`,
       },
     }),
   );
   process.exit(0);
+}
+
+/**
+ * An ask names the skill that holds the procedure, so the model is pointed at
+ * it at the moment of action instead of having to remember it. A skill the
+ * model may or may not load is the weakest way to carry a rule; the hook speaks
+ * either way. Denials do not get one: nothing is to be loaded and carried on.
+ */
+const SKILL_FOR = [
+  [/^(rm-rf|git-discard|git-push|deploy-command|data-wipe)/, 'risky-op'],
+  [/^write-(dotenv|private-key|credential)/, 'handle-secrets'],
+  [/^write-prod-config/, 'review-a-config-change'],
+  [/^(edit-applied-migration|migration-against-prod|raw-ddl-against-prod)/, 'migrate-data'],
+];
+export function skillHint(decision) {
+  if (decision?.decision !== 'ask' || /`risky-op`/.test(decision.reason)) return '';
+  const skill = SKILL_FOR.find(([re]) => re.test(decision.rule))?.[1];
+  return skill ? ` Load the \`${skill}\` skill before going on.` : '';
 }
 
 // Run main() only when executed directly, so the test file can import decide().
