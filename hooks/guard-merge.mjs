@@ -31,10 +31,10 @@
  * returning something unexpected -> no decision. The loop skill also checks
  * before it merges; this hook is the guarantee for the case where it did not.
  */
-import { pathToFileURL } from 'node:url';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { appendFileSync, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 // ---------------------------------------------------------------- helpers
 // Duplicated from guard-risky-ops on purpose: hooks install as independent
@@ -470,7 +470,32 @@ function record(decision, payload) {
   } catch { /* never let logging change the decision */ }
 }
 
+/**
+ * The plugin and a project install both register this hook. Where both exist, only the project's
+ * copy runs, so each decision happens and is logged once. sual-cavab had both from 9 November: every
+ * harness hook ran twice, and its logs counted 86 decisions that were 66, and 94 reviewer runs that
+ * were 67.
+ */
+function standsDown() {
+  try {
+    const self = fileURLToPath(import.meta.url);
+    const mine = join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'hooks', basename(self));
+    if (!existsSync(mine)) return false;
+    // Same file = same device and inode, so a symlinked temp dir (macOS /var -> /private/var), a
+    // different case or a junction cannot make a hook mistake itself for the other copy.
+    const a = statSync(mine, { bigint: true });
+    const b = statSync(self, { bigint: true });
+    if (a.ino !== 0n && b.ino !== 0n) return !(a.dev === b.dev && a.ino === b.ino);
+    const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
+    const same = (x, y) => (process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y);
+    return !same(real(mine), real(self));
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
+  if (standsDown()) process.exit(0);
   let decision = null;
   let payload = null;
   try {
@@ -495,7 +520,7 @@ async function main() {
 
 const invokedDirectly = (() => {
   try {
-    return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+    return process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
   } catch {
     return false;
   }
