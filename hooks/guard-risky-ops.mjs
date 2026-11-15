@@ -248,6 +248,80 @@ const DISPOSABLE = new Set([
   'tmp', 'temp', '.venv', 'venv',
 ]);
 
+// A path inside the OS temp directory is scratch by definition. `..` is refused
+// everywhere below so `/tmp/../home` cannot ride in on the prefix.
+const SCRATCH_PATH = /^(\/tmp|\/var\/tmp|\/private\/tmp)(\/|$)|\/appdata\/local\/temp(\/|$)/i;
+const isScratchPath = (p) => !/(^|\/)\.\.(\/|$)/.test(norm(p)) && SCRATCH_PATH.test(norm(p));
+const SCRATCH_ENV = new Set(['TMPDIR', 'TEMP', 'TMP']);
+
+/**
+ * Variables this one command points at scratch space: `D=$(mktemp -d)`,
+ * `S=/c/.../AppData/Local/Temp/...`, `W=$(cygpath -w "$D")`, `P="$S/sub"`.
+ * Read from the text of the command only. A variable set in an earlier command,
+ * or by anything not recognised here, stays unknown and `rm -rf "$X"` still asks.
+ */
+function scratchVars(command) {
+  const firstRm = command.search(/\brm\b/);
+  const climbs = (v) => /(^|\/)\.\.(\/|$)/.test(norm(v));
+  // Every place a name is assigned, quoted or not. Only a plain top-level `NAME=value` is understood;
+  // anything else that writes the name (`export "D=..."`, `eval 'D=..'`, `S+=..`, `-m"S=/tmp/x"`)
+  // poisons it, because reading shell by regex is how the earlier versions were bypassed.
+  const found = new Map(); // name -> { values: [], poisoned, first }
+  let quote = null;
+  let scanned = 0;
+  const inQuote = (idx) => {
+    for (; scanned < idx; scanned++) {
+      const c = command[scanned];
+      if (quote) {
+        if (c === '\\' && quote === '"') scanned++;
+        else if (c === quote) quote = null;
+      } else if (c === '\\') scanned++;
+      else if (c === '"' || c === "'") quote = c;
+    }
+    return quote !== null;
+  };
+  for (const m of command.matchAll(/(?<![\w$])([A-Za-z_][A-Za-z0-9_]*)(\+?)=/g)) {
+    const e = found.get(m[1]) ?? { values: [], poisoned: false, first: m.index };
+    found.set(m[1], e);
+    const before = m.index === 0 ? '' : command[m.index - 1];
+    const plain = m[2] === '' && (m.index === 0 || /[\s;&|(]/.test(before)) && !inQuote(m.index);
+    if (!plain) { e.poisoned = true; continue; }
+    const vre = /(?:"[^"]*"|'[^']*'|\$\([^)]*\)|`[^`]*`|[^\s;&|])*/y;
+    vre.lastIndex = m.index + m[0].length;
+    e.values.push(vre.exec(command)[0]);
+  }
+  const vars = new Set();
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const [name, e] of found) {
+      if (vars.has(name) || e.poisoned || e.values.length === 0) continue;
+      if (firstRm !== -1 && e.first > firstRm) continue; // set after the rm, or in an earlier command
+      const scratch = e.values.every((raw) => {
+        const v = unquote(raw);
+        if (climbs(v)) return false;
+        const mk = /^\$\(\s*mktemp\b[^)]*\)$|^`\s*mktemp\b[^`]*`$/.test(v);
+        const refs = [...v.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].map((r) => r[1]);
+        const wrapped = /^\$\(\s*cygpath\b[^)]*\)$/.test(v) && refs.length > 0 && refs.every((r) => vars.has(r));
+        return mk || wrapped || isScratchPath(v) || refersToScratch(v, vars);
+      });
+      if (scratch) { vars.add(name); changed = true; }
+    }
+  }
+  return vars;
+}
+
+/**
+ * `$S`, `${S}/x`, `$TMPDIR/x` where the variable is scratch and nothing climbs out with `..`.
+ * A path under the variable must name something (`$S/repo`), not be a bare glob (`$S/*`): if the
+ * variable is unset or `mktemp` failed, `"$S/"*` is `/*`.
+ */
+function refersToScratch(target, vars) {
+  const m = /^\$\{?([A-Za-z_]\w*)\}?(\/.*)?$/.exec(norm(target));
+  if (!m || /(^|\/)\.\.(\/|$)/.test(m[2] ?? '')) return false;
+  if (m[2] && !/[^/*?[\]"'.]/.test(m[2])) return false;
+  return vars.has(m[1]) || SCRATCH_ENV.has(m[1]);
+}
+
 const NUKE_TARGET = /^(\/|\/\*|~|~\/|\$HOME|\$\{HOME\}|\/\*.*|[A-Za-z]:\/?)$/;
 
 const DOTENV_SAFE_SUFFIX = /\.(example|sample|template|dist|defaults?|schema)$/i;
@@ -324,13 +398,18 @@ function checkGitPush(t, segment) {
   };
 }
 
-function checkRm(t, segment) {
+function checkRm(t, segment, escapes, ctx = {}) {
   if (t[0] !== 'rm') return null;
   const flags = t.filter((x) => x.startsWith('-')).join('');
   if (!(flags.includes('r') || flags.includes('R'))) return null;
   if (!flags.includes('f')) return null;
 
-  const targets = t.slice(1).filter((x) => !x.startsWith('-'));
+  // `2>/dev/null` and `> out.log` are redirections, not things being deleted.
+  const targets = [];
+  for (let i = 1; i < t.length; i++) {
+    if (/^\d*[<>]/.test(t[i])) { if (/^\d*>{1,2}$|^\d*<$/.test(t[i])) i++; continue; }
+    if (!t[i].startsWith('-')) targets.push(t[i]);
+  }
   if (targets.length === 0) return null;
 
   for (const target of targets) {
@@ -344,6 +423,7 @@ function checkRm(t, segment) {
   }
 
   const risky = targets.filter((x) => {
+    if (isScratchPath(x) || refersToScratch(x, ctx.scratch ?? new Set())) return false;
     const parts = norm(x).replace(/\/+$/, '').split('/');
     return !DISPOSABLE.has(parts[parts.length - 1]);
   });
@@ -732,12 +812,13 @@ const RULES = [checkGitPush, checkRm, checkGitDiscard, checkDeploy, checkDataWip
  * guard, and this one cannot be weaker than it, only stricter.
  */
 function checkBash(command) {
+  const ctx = { scratch: scratchVars(command) };
   let ask = checkPipedWipe(command); // a statement piped or heredoc'd to a database client: only the whole command shows it
   for (const [split, escapes] of [[segments(command), true], [plainSegments(command), false]]) for (const segment of split) {
     const t = tokens(segment);
     if (t.length === 0) continue;
     for (const rule of RULES) {
-      const hit = rule(t, segment, escapes);
+      const hit = rule(t, segment, escapes, ctx);
       if (!hit) continue;
       if (hit.decision === 'deny') return hit;
       ask ??= hit;

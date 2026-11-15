@@ -18,6 +18,9 @@ import path from 'node:path';
 
 import { decide } from './guard-prod-ddl.mjs';
 
+// Hooks log to $CLAUDE_PROJECT_DIR/.claude; without this the child falls back to cwd and
+// test fixtures land in a real project's harness-decisions.log.
+const NO_LOG_DIR = mkdtempSync(path.join(tmpdir(), 'hook-nolog-'));
 const HOOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'guard-prod-ddl.mjs');
 
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
@@ -238,7 +241,7 @@ describe('fail open', () => {
 describe('process contract', () => {
   function runHook(stdin, env) {
     return new Promise((resolve) => {
-      const child = spawn(process.execPath, [HOOK], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+      const child = spawn(process.execPath, [HOOK], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CLAUDE_PROJECT_DIR: NO_LOG_DIR, ...env } });
       let out = '';
       child.stdout.on('data', (d) => (out += d));
       child.on('close', (code) => resolve({ code, out }));
