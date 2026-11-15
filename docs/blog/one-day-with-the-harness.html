@@ -135,25 +135,26 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
 <body>
 <div class="wrap">
   <header>
-    <p class="eyebrow">Blog · the day was 8 November 2026</p>
+    <p class="eyebrow">Blog · one project, 8 to 15 November 2026</p>
     <h1>One Day With the Harness</h1>
-    <p class="lede">A client questions tracker went from a list of GitHub issues to a finished v1 on a live staging site in one working day. An AI agent did the building and a second one reviewed it. This is what that looked like, including the mistakes, the stops, and the fixes the project forced back into the harness.</p>
-    <p class="byline">By rmusayevr · published 9 November 2026 · afterword added 15 November</p>
+    <p class="lede">A client questions tracker went from a list of GitHub issues to a finished product on a live staging site, then into <code>main</code>. An AI agent did the building and a second one reviewed it. This is the first day in detail, then what the whole project came to, including the mistakes, the stops, and the fixes the project forced back into the harness.</p>
+    <p class="byline">By rmusayevr · published 9 November 2026 · updated 15 November with the totals for the whole project</p>
     <div class="links">
       <a href="https://github.com/rmusayevr/sual-cavab">The project: sual-cavab</a>
       <a href="https://github.com/rmusayevr/claude-harness">The harness: claude-harness</a>
       <a href="../">How the harness works, interactively</a>
     </div>
-    <div class="strip" aria-label="The day in numbers">
-      <div><b>13</b><span>issues, all closed</span></div>
-      <div><b>16</b><span>pull requests merged</span></div>
-      <div><b>25</b><span>reviewer runs</span></div>
-      <div><b>~395</b><span>tests (289 backend, ~106 frontend)</span></div>
-      <div><b>11 h 28 m</b><span>first issue to last merge</span></div>
+    <div class="strip" aria-label="The whole project in numbers">
+      <div><b>53</b><span>issues, all closed</span></div>
+      <div><b>72</b><span>pull requests merged</span></div>
+      <div><b>94+</b><span>reviewer runs logged</span></div>
+      <div><b>65</b><span>of the 72 PRs carry a review triage</span></div>
+      <div><b>1,068</b><span>tests (512 backend, 556 frontend)</span></div>
+      <div><b>10</b><span>lessons recorded</span></div>
     </div>
-    <p class="fine">Counted from GitHub and the project's own logs. The clock includes every wait for the owner. About 3,300 lines of product code and 4,300 lines of tests. Staging is live on Render with invented demo data only.</p>
+    <p class="fine">Counted on 15 November 2026 from GitHub (all 53 issues and 72 pull requests: 71 merged into <code>staging</code> and one release into <code>main</code>), the project's own logs and its last CI run. About 8,400 lines of product code and 13,700 lines of tests on <code>main</code>, migrations excluded. The reviewer-run count is a minimum: the usage log records no reviewer after 12 November, although pull requests 113 to 124 have triage comments. Staging is live on Render.</p>
     <nav class="toc" aria-label="Sections">
-      <a href="#loop">The loop</a><a href="#day">The day</a><a href="#one-issue">One issue</a><a href="#caught">What review caught</a><a href="#stops">Where it stopped</a><a href="#learned">What the harness learned</a><a href="#slow">What was slow</a><a href="#logs">What the logs say</a><a href="#week">The rest of the week</a><a href="#try">Try it</a><a href="#limits">Limits</a>
+      <a href="#loop">The loop</a><a href="#day">The first day</a><a href="#one-issue">One issue</a><a href="#caught">What review caught</a><a href="#stops">Where it stopped</a><a href="#learned">What the harness learned</a><a href="#slow">What was slow</a><a href="#logs">What the logs say</a><a href="#week">The whole project</a><a href="#try">Try it</a><a href="#limits">Limits</a>
     </nav>
   </header>
 
@@ -311,19 +312,21 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
   </section>
 
   <section id="week">
-    <div class="clock">8 to 15 November</div>
+    <div class="clock">the whole project</div>
     <div class="body">
-      <h2>Afterword: the rest of the first week</h2>
-      <p>The project is finished. The logs kept running after the day this page describes, so I audited them once the last pull request was in. Everything below comes from the project's <code>harness-decisions.log</code>, <code>harness-usage.log</code> and <code>.claude/lessons/</code>.</p>
+      <h2>The whole project, audited</h2>
+      <p>Everything above is the first day. The project then ran to 15 November and is finished: all 53 issues are closed and the last pull request, a release of <code>staging</code> into <code>main</code>, merged on 15 November. I audited the project's GitHub history, its <code>harness-decisions.log</code>, <code>harness-usage.log</code> and <code>.claude/lessons/</code> once it was in, and the numbers below are for the whole project, not for one day.</p>
       <ul class="plain">
-        <li><strong>The guards made 86 decisions, not 10.</strong> 23 asks on <code>rm -rf</code> of something not on the regenerable list, 25 on wiping a data store, 23 before a merge, 9 denials of shell writes to <code>.env</code>, and a handful of others. Nearly all the <code>rm -rf</code> asks were scratch folders the agent had just made. That was prompt fatigue, the thing the guard tests are written to prevent, and it is <a href="https://github.com/rmusayevr/claude-harness/pull/34">fixed in a harness pull request</a> for the cases the guard can prove from the command itself.</li>
+        <li><strong>Review reached nearly everything that mattered.</strong> 65 of the 72 pull requests carry a review triage comment, and 51 of the 54 that touched backend or frontend code do. The three code PRs without one are #84, #93 and #125 (the release). Where the triage ends with the status line <span class="skill">triage-review</span> prescribes, the project has 64 rounds, 8 of which ended <em>not ready</em>, and those lines report at least 126 blockers fixed. 15 of the 65 triage comments use another format and are not in that count. The reviewer was run at least 94 times; the log stops recording it after 12 November, so that figure is a floor.</li>
+        <li><strong>The guards made 86 decisions, not 10.</strong> 23 asks on <code>rm -rf</code> of something not on the regenerable list, 25 on wiping a data store, 23 before a merge, 9 denials of shell writes to <code>.env</code>, and a handful of others. Nearly all the <code>rm -rf</code> asks were scratch folders the agent had just made. That was prompt fatigue, the thing the guard tests are written to prevent, and it is <a href="https://github.com/rmusayevr/claude-harness/pull/34">fixed in the harness</a> for the cases the guard can prove from the command itself.</li>
         <li><strong>The 25 data-wipe asks were mostly <code>DROP DATABASE</code> on scratch databases made in earlier commands.</strong> The guard cannot tell those from a real one without guessing at names, so it still asks. I did not count how many of these asks, or of the merge asks, were mistakes; a guess would flatter the guards.</li>
-        <li><strong>A review was skipped once, and a rule did not stop it.</strong> PR #59 merged before its fresh-eyes review ran. The review afterwards found two regressions, fixed in #60 over two rounds. The project then added a hook that asks before merging a pull request with no review triage comment. It asked 23 times, always in <code>auto</code> mode, and the merges that followed went ahead. An <code>ask</code> that nobody answers is not a gate, so the harness version of that hook is a <code>deny</code>.</li>
+        <li><strong>A review was skipped once, and a rule did not stop it.</strong> PR #59 merged before its fresh-eyes review ran. The review afterwards found two regressions, fixed in #60 over two rounds. The project then added a hook that asks before merging a pull request with no review triage comment. It asked 23 times, always in <code>auto</code> mode, and the merges that followed went ahead. An <code>ask</code> that nobody answers is not a gate, so the harness version of that hook is a <code>deny</code>. It also showed that the triage comments do not all follow one format, so the harness version looks for the status line the skill asks for.</li>
         <li><strong>Four log entries were not the project's.</strong> The harness's own hook tests wrote their fixtures (<code>docker volume rm somevol</code>) into the project's decisions log, because the hook fell back to the working directory. I found it by reading the log, and the tests no longer do it.</li>
-        <li><strong>The reviewer did most of the work.</strong> 94 reviewer runs over the week, 25 of them on day one. The skills that fire are the ones the loop names, so the same pattern as day one held. The usage log has only two sessions in it, so "40 of 56 skills never fired" is a weak signal and no skill was deleted on it.</li>
+        <li><strong>The skills that fire are the ones the loop names.</strong> 17 different skills fired in the log, and the rest never did. Most of those are for situations this project never had. The log has two sessions in it and misses the last days, so no skill was deleted on that evidence.</li>
         <li><strong>Ten lessons were recorded, and three say the rule already existed.</strong> A flag's meaning written from memory (the guidance against inventing flags was already in <code>CLAUDE.md</code>), a new endpoint breaking hand-built test mocks (the scope-change skill already says to check mocks), and slow runs waited on instead of timed (the profiling skill already says to measure). A written rule did not fire at the moment it was needed. That is the finding the harness has no good answer to yet.</li>
+        <li><strong>The product changed shape.</strong> The drafting feature from the first day was removed later (#116), and a client answer link and client accounts were added.</li>
       </ul>
-      <div class="callout warn"><p><strong>The honest part.</strong> One week, one project and one owner, and the same person ran the harness and wrote this up. The audit found the harness doing its job (reviews caught real defects, the <code>.env</code> guard denied nine times) and also costing something (about fifty prompts around scratch work, some of them avoidable). It did not find out whether the harness saved time.</p></div>
+      <div class="callout warn"><p><strong>The honest part.</strong> One project, one owner, and the same person ran the harness and wrote this up. The audit found the harness doing its job (reviews caught real defects, the <code>.env</code> guard denied nine times) and also costing something (about fifty prompts around scratch work, some of them avoidable). It did not find out whether the harness saved time.</p></div>
     </div>
   </section>
 
@@ -349,11 +352,11 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
     <div class="body">
       <h2>What this does not show</h2>
       <ul class="plain">
-        <li><strong>One project, one owner.</strong> The day is the main story and the afterword covers the rest of the first week. The numbers say what happened, not what will happen to you.</li>
+        <li><strong>One project, one owner.</strong> The first day is told in detail and the last section covers the whole project. The numbers say what happened, not what will happen to you.</li>
         <li><strong>No comparison.</strong> I did not measure how long the same app would take without the harness, so there is no "time saved" figure on this page.</li>
         <li><strong>The reviewer's false alarms were not counted.</strong> Its hit rate on real defects looks high, but a clean tally was not kept.</li>
         <li><strong>The harness was changing during the run.</strong> Some of the eleven and a half hours went to fixing the harness, and the fixes are in the harness repository, not in this tutorial.</li>
-        <li><strong>Staging is live, but thin.</strong> It runs on free Render services with invented demo data. Drafting is not set up there (no Claude key), nobody has clicked through the screens on the live site, and nothing has been merged into <code>main</code>. No real client data has been used in the repository, the tests or the fixtures.</li>
+        <li><strong>Staging is live, but thin.</strong> It runs on free Render services. The README of the project records that the owner clicked through the screens by hand on the staging site, and that no script has driven a browser since the headless runs. The release into <code>main</code> merged on 15 November. The sentence from the first-day write-up that no real client data was used in the repository, the tests or the fixtures was not re-checked for this update.</li>
       </ul>
     </div>
   </section>
