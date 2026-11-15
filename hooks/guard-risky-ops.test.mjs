@@ -16,6 +16,9 @@ import path from 'node:path';
 import { decide } from './guard-risky-ops.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+// Hooks log to $CLAUDE_PROJECT_DIR/.claude; without this the child falls back to cwd and
+// test fixtures land in a real project's harness-decisions.log.
+const NO_LOG_DIR = mkdtempSync(path.join(tmpdir(), 'hook-nolog-'));
 const HOOK = path.resolve(HERE, 'guard-risky-ops.mjs');
 
 const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
@@ -539,6 +542,49 @@ describe('commands a shell runs are seen, wherever they sit', () => {
   });
 });
 
+// sual-cavab logged 23 `rm-rf-nondisposable` asks in a week; nearly all were scratch
+// space the agent had just made. Each ALLOW below is one of those shapes, and each
+// ASK beside it is the nearest thing that must still prompt.
+describe('rm -rf on scratch space', () => {
+  test('allows what the command itself pointed at scratch', () => {
+    for (const cmd of [
+      'rm -rf /tmp/build-check',
+      'rm -rf /c/Users/me/AppData/Local/Temp/claude/abc/scratchpad/r4',
+      'rm -rf C:/Users/me/AppData/Local/Temp/x',
+      'rm -rf $TMPDIR/probe',
+      'D=$(mktemp -d) && cd "$D" && rm -rf "$D"',
+      'D=$(mktemp -d) && W=$(cygpath -w "$D") && rm -rf "$W"',
+      'S=/c/Users/me/AppData/Local/Temp/claude/abc/scratchpad/pr97; rm -rf "$S"',
+      'S=/tmp/pr97; rm -rf "$S/repo" "${S}/mE"',
+      'rm -rf node_modules/.cache 2>/dev/null',
+      'rm -rf dist >/dev/null 2>&1',
+    ]) {
+      expect(bash(cmd), 'allow', cmd);
+    }
+  });
+
+  test('still asks when the path is not provably scratch', () => {
+    for (const cmd of [
+      'rm -rf "$S"',                                  // set in an earlier command: unknown
+      'S=$(pwd); rm -rf "$S"',                        // not mktemp, not a temp path
+      'S=/tmp/x; rm -rf "$S/../../home"',             // climbs out
+      'rm -rf /tmp/../home/me/src',
+      'rm -rf /tmpfoo/src',                           // a prefix, not the temp dir
+      'rm -rf /home/me/Temp/src',                     // "Temp" outside AppData\Local
+      'D=$(mktemp -d); rm -rf src "$D"',              // one target is scratch, one is not
+      'rm -rf src 2>/dev/null',                       // the redirection is not the only target
+      'rm -rf uploads > /dev/null',
+    ]) {
+      expect(bash(cmd), 'ask', cmd);
+    }
+  });
+
+  test('scratch space never turns a root or home delete into an ask', () => {
+    expect(bash('D=$(mktemp -d); rm -rf / "$D"'), 'deny', 'root beside a scratch dir');
+    expect(bash('TMPDIR=/tmp; rm -rf ~'), 'deny', 'home after a temp assignment');
+  });
+});
+
 // Round 2 of the sual-cavab PR #16 review: each of these was denied by the
 // plain split and allowed by the shell-aware splitter alone. The guards now
 // check both, so the shell-aware splitter can only add blocks.
@@ -699,7 +745,7 @@ describe('fail open', () => {
 
 function runHook(stdin, env) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [HOOK], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+    const child = spawn(process.execPath, [HOOK], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CLAUDE_PROJECT_DIR: NO_LOG_DIR, ...env } });
     let out = '';
     let err = '';
     child.stdout.on('data', (d) => (out += d));
