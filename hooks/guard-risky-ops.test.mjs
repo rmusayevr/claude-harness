@@ -574,6 +574,14 @@ describe('rm -rf on scratch space', () => {
       'D=$(mktemp -d); rm -rf src "$D"',              // one target is scratch, one is not
       'rm -rf src 2>/dev/null',                       // the redirection is not the only target
       'rm -rf uploads > /dev/null',
+      // found by the fresh-eyes review of the scratch change
+      'S=/tmp/x; S=$HOME/src; rm -rf "$S"',             // a later assignment is not scratch
+      'rm -rf "$D"; D=$(mktemp -d)',                    // assigned after the rm
+      'D=$(mktemp -d)/../../home/me; rm -rf "$D"',      // a suffix that climbs out
+      'D=$(mktemp -d) && W=$(cygpath -w "$D/../../..") && rm -rf "$W"',
+      'git commit -m "use S=/tmp/x"; rm -rf "$S"',      // an assignment inside quoted text
+      'rm -rf "$TMPDIR/"*',                             // unset TMPDIR makes this /*
+      'D=$(mktemp -d); rm -rf "$D/"*',                  // so does a failed mktemp
     ]) {
       expect(bash(cmd), 'ask', cmd);
     }

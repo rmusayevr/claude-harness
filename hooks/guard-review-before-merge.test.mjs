@@ -102,3 +102,19 @@ test('every decision is a deny: nobody is there to answer an ask in a loop (sual
   }
   assert.match(decide(bash('gh pr merge 61'), bodies()).reason, /own command/);
 });
+
+test('the triage format triage-review prescribes counts, with or without a heading', () => {
+  const skillFormat = '| finding | label | outcome |\n|---|---|---|\n| x | nit | left |\n\nRound 1: 0 blockers fixed, 0 settled, 1 nits. Open: 0 blockers, 0 decisions → ready';
+  assert.equal(decide(bash('gh pr merge 5 --squash'), bodies(skillFormat)), null);
+});
+
+test('a comment that only mentions a review triage is not one', () => {
+  for (const mention of ['will post the review triage after CI', '## Review triage\n(pending)']) {
+    assert.equal(decide(bash('gh pr merge 5'), bodies(mention)).decision, 'deny', mention);
+  }
+});
+
+test('GH_REPO= on the command line chooses the repository', () => {
+  assert.equal(merges('GH_REPO=o/r gh pr merge 5')[0].repo, 'o/r');
+  assert.equal(merges('GH_REPO=o/r gh pr merge 5 -R x/y')[0].repo, 'x/y');
+});

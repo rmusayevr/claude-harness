@@ -261,25 +261,44 @@ const SCRATCH_ENV = new Set(['TMPDIR', 'TEMP', 'TMP']);
  * or by anything not recognised here, stays unknown and `rm -rf "$X"` still asks.
  */
 function scratchVars(command) {
+  // Quoted text that is not an assignment's value is data: `git commit -m "use S=/tmp/x"` assigns nothing.
+  // Blanked to spaces of the same length, so a match offset still indexes the original text.
+  const code = command.replace(/(^|[\s;&|(])("[^"]*"|'[^']*')/g, (_, pre, q) => pre + ' '.repeat(q.length));
+  const firstRm = code.search(/\brm\b/);
+  const assigns = [...code.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=((?:"[^"]*"|'[^']*'|\$\([^)]*\)|`[^`]*`|[^\s;&|])*)/g)]
+    .map((m) => ({ name: m[1], raw: command.slice(m.index + m[0].length - m[2].length, m.index + m[0].length), at: m.index }));
   const vars = new Set();
-  const assigns = [...command.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\$\([^)]*\)|`[^`]*`|[^\s;&|]*)/g)];
+  const climbs = (v) => /(^|\/)\.\.(\/|$)/.test(norm(v));
   for (let changed = true; changed;) {
     changed = false;
-    for (const [, name, raw] of assigns) {
+    for (const name of new Set(assigns.map((a) => a.name))) {
       if (vars.has(name)) continue;
-      const v = unquote(raw);
-      const mk = /^\$\(\s*mktemp\b[^)]*\)$|^`\s*mktemp\b[^`]*`$/.test(v);
-      const wrapped = /^\$\(\s*cygpath\b[^)]*\)$/.test(v) && [...v.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].some((m) => vars.has(m[1]));
-      if (mk || wrapped || isScratchPath(v) || refersToScratch(v, vars)) { vars.add(name); changed = true; }
+      const mine = assigns.filter((a) => a.name === name);
+      // Only if it is set before the first `rm`, and EVERY assignment to it is scratch: a later
+      // `S=$HOME/src` or an earlier command's value must not ride on one scratch assignment.
+      if (firstRm !== -1 && mine[0].at > firstRm) continue;
+      const scratch = mine.every(({ raw }) => {
+        const v = unquote(raw);
+        if (climbs(v)) return false;
+        const mk = /^\$\(\s*mktemp\b[^)]*\)$|^`\s*mktemp\b[^`]*`$/.test(v);
+        const wrapped = /^\$\(\s*cygpath\b[^)]*\)$/.test(v) && [...v.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].some((m) => vars.has(m[1]));
+        return mk || wrapped || isScratchPath(v) || refersToScratch(v, vars);
+      });
+      if (scratch) { vars.add(name); changed = true; }
     }
   }
   return vars;
 }
 
-/** `$S`, `${S}/x`, `$TMPDIR/x` where the variable is scratch and nothing climbs out with `..`. */
+/**
+ * `$S`, `${S}/x`, `$TMPDIR/x` where the variable is scratch and nothing climbs out with `..`.
+ * A path under the variable must name something (`$S/repo`), not be a bare glob (`$S/*`): if the
+ * variable is unset or `mktemp` failed, `"$S/"*` is `/*`.
+ */
 function refersToScratch(target, vars) {
   const m = /^\$\{?([A-Za-z_]\w*)\}?(\/.*)?$/.exec(norm(target));
   if (!m || /(^|\/)\.\.(\/|$)/.test(m[2] ?? '')) return false;
+  if (m[2] && !/[^/*?[\]"']/.test(m[2])) return false;
   return vars.has(m[1]) || SCRATCH_ENV.has(m[1]);
 }
 

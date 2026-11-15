@@ -84,7 +84,11 @@ export function merges(command) {
   const found = [];
   for (const words of segments(command)) {
     let i = 0;
-    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) i++; // VAR=x gh ...
+    let envRepo = null;
+    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) {
+      if (words[i].startsWith('GH_REPO=')) envRepo = words[i].slice(8); // GH_REPO=o/r gh pr merge ...
+      i++;
+    }
     const w = words.slice(i);
     if (!/^gh(\.exe)?$/i.test((w[0] ?? '').replace(/^.*[\\/]/, '')) || w[1] !== 'pr' || w[2] !== 'merge') continue;
     let selector = null;
@@ -101,21 +105,29 @@ export function merges(command) {
       else if (selector === null) selector = t.replace(/^#/, '');
     }
     if (disable) continue; // cancels an auto-merge, merges nothing
-    if (repo === null && process.env.GH_REPO) repo = process.env.GH_REPO;
+    if (repo === null) repo = envRepo || process.env.GH_REPO || null;
     const url = selector ? /\/pull\/(\d+)/.exec(selector) : null;
     found.push({ selector, repo, number: url ? Number(url[1]) : /^\d+$/.test(selector ?? '') ? Number(selector) : null });
   }
   return found;
 }
 
+/**
+ * What triage-review tells the agent to end its comment with:
+ * `Round <N>: ... Open: <a> blockers, <b> decisions → ready | not ready`. The words "review triage"
+ * are NOT part of that format, so the status line is what counts as a triage. A comment that only
+ * mentions the phrase is not one.
+ */
+const TRIAGE_LINE = /Round\s+\d+\s*:[^\n]*(?:→|->)\s*(?:not\s+)?ready\b/i;
+
 /** Comment and review bodies of a PR, oldest first, or null if they cannot be read. */
-function fetchBodies({ selector, repo }) {
+function fetchBodies({ selector, repo }, timeout = 8000) {
   try {
     const args = ['pr', 'view'];
     if (selector) args.push(selector);
     if (repo) args.push('-R', repo);
     args.push('--json', 'comments,reviews');
-    const out = execFileSync('gh', args, { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    const out = execFileSync('gh', args, { encoding: 'utf8', timeout, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
     const data = JSON.parse(out);
     return [...(data.comments ?? []), ...(data.reviews ?? [])]
       .sort((a, b) => String(a.createdAt ?? a.submittedAt ?? '').localeCompare(String(b.createdAt ?? b.submittedAt ?? '')))
@@ -129,20 +141,24 @@ const label = (m) => (m.number !== null ? `PR #${m.number}` : m.selector ? `PR "
 
 export function decide(payload, deps = {}) {
   if (payload?.tool_name !== 'Bash') return null;
+  // Chained merges look up one PR after another; stay inside the hook's own timeout (hooks.json: 15 s).
+  const deadline = Date.now() + 12000;
   for (const m of merges(payload?.tool_input?.command)) {
-    const bodies = (deps.fetchBodies ?? fetchBodies)(m);
+    const left = deadline - Date.now();
+    if (!deps.fetchBodies && left < 1000) continue; // out of time: fail open, like every other failure here
+    const bodies = (deps.fetchBodies ?? ((x) => fetchBodies(x, Math.min(8000, left))))(m);
     if (!Array.isArray(bodies)) continue; // fail open for this one
-    const triages = bodies.filter((b) => /review triage/i.test(b));
+    const triages = bodies.filter((b) => TRIAGE_LINE.test(b));
     const recovery =
       'Run the fresh-eyes review and post its triage as its own command (not chained with the merge), then merge. If the owner wants this PR merged without a review, they merge it themselves.';
     if (triages.length === 0)
       return {
         decision: 'deny',
         rule: 'review-before-merge',
-        reason: `${label(m)} has no "Review triage" comment. work-the-queue step 4: the fresh-eyes review runs and its triage is posted before the merge (PR #59 was merged without it; the review then found two regressions). ${recovery}`,
+        reason: `${label(m)} has no review triage comment (a comment ending with the "Round N: ... → ready" line from triage-review). work-the-queue step 4: the fresh-eyes review runs and its triage is posted before the merge (PR #59 was merged without it; the review then found two regressions). ${recovery}`,
       };
     const latest = triages[triages.length - 1];
-    if (/(?:→|->)\s*not ready/i.test(latest))
+    if (/(?:→|->)\s*not\s+ready/i.test(latest))
       return {
         decision: 'deny',
         rule: 'review-before-merge',
