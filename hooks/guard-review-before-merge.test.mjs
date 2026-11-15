@@ -11,9 +11,9 @@ const bash = (command) => ({ tool_name: 'Bash', tool_input: { command } });
 const bodies = (...b) => ({ fetchBodies: () => b });
 const TRIAGE = '## Review triage (fresh-eyes reviewer)\nRound 1: 1 blockers fixed, 0 settled, 2 nits. Open: 0 blockers, 0 decisions → ready.';
 
-test('asks to merge a PR that has no review triage comment', () => {
+test('denies merging a PR that has no review triage comment', () => {
   const d = decide(bash('gh pr merge 59 --merge --delete-branch'), bodies('looks fine', 'CI green'));
-  assert.equal(d.decision, 'ask');
+  assert.equal(d.decision, 'deny');
   assert.equal(d.rule, 'review-before-merge');
   assert.match(d.reason, /#59/);
 });
@@ -22,7 +22,7 @@ test('lets a PR with a ready review triage through', () => {
   assert.equal(decide(bash('gh pr merge 60 --merge'), bodies(TRIAGE)), null);
 });
 
-test('asks when the latest triage says not ready; a later ready round lets it through', () => {
+test('denies when the latest triage says not ready; a later ready round lets it through', () => {
   const notReady = '## Review triage\nRound 1: 0 blockers fixed. Open: 2 blockers, 0 decisions → not ready.';
   assert.match(decide(bash('gh pr merge 61'), bodies(notReady)).reason, /not ready/);
   assert.equal(decide(bash('gh pr merge 61'), bodies(notReady, TRIAGE)), null);
@@ -94,4 +94,11 @@ test('the rule exists only in a loop project (.claude/harness-loop.json)', () =>
   mkdirSync(path.join(dir, '.claude'));
   writeFileSync(path.join(dir, '.claude', 'harness-loop.json'), '{}');
   assert.equal(inLoopProject(dir), true);
+});
+
+test('every decision is a deny: nobody is there to answer an ask in a loop (sual-cavab: 23 asks, merges continued)', () => {
+  for (const b of [[], ['## Review triage\nOpen: 1 blockers, 0 decisions → not ready.']]) {
+    assert.equal(decide(bash('gh pr merge 61'), bodies(...b)).decision, 'deny');
+  }
+  assert.match(decide(bash('gh pr merge 61'), bodies()).reason, /own command/);
 });

@@ -1,26 +1,27 @@
 #!/usr/bin/env node
 /**
- * PreToolUse guard: ask before `gh pr merge` when the PR has no review triage comment, or when
+ * PreToolUse guard: deny `gh pr merge` when the PR has no review triage comment, or when
  * its latest triage says "not ready". Active only where `.claude/harness-loop.json` exists, i.e.
  * where `/work-the-queue` runs and step 4 (review fresh, triage) is the rule; elsewhere a PR has no
- * such comment and it would ask on every merge.
+ * such comment and it would block every merge.
  *
  * Bought by sual-cavab PR #59 (2026-11-09), merged without step 4 of work-the-queue (review fresh,
  * triage). The review run afterwards found two regressions, fixed in #60. Lesson:
  * merged-without-review (.claude/lessons/).
  *
- * `ask`, not `deny`: the owner may tell the agent to merge a docs-only PR without a review, and a
- * guard that over-blocks gets switched off. UNKNOWN: what an `ask` does when nobody can answer
- * (an unattended loop). The harness's guard-merge.mjs says it is "a hard block or a silent allow
- * depending on the permission mode" and uses `deny` in loop mode for that reason. Until it is seen
- * in the loop's real permission mode, treat this hook as a guard for attended sessions.
+ * `deny`, not `ask`: this only runs in a loop project, where nobody is there to answer, and an
+ * `ask` is then "a hard block or a silent allow depending on the permission mode" (ARCHITECTURE.md).
+ * sual-cavab logged 23 of these asks, all in `auto` mode, and kept merging PRs afterwards, so the
+ * `ask` was probably not stopping anything. A merge that must not happen unattended is a `deny`,
+ * like every rule in guard-merge's loop mode. The cost is the owner's "merge this docs-only PR
+ * without a review": inside the loop the owner merges that one by hand.
  *
  * Decidable from GitHub, not from the command, so it asks `gh` (a network call, made only for a
  * command whose first word is `gh pr merge`, with a timeout under the hook's own). FAIL OPEN, like
  * every hook here: `gh` missing, unauthenticated, slow or an unexpected answer means no decision.
  *
  * Limit: the hook sees the PR before the command runs. `gh pr comment ... && gh pr merge` in one
- * command therefore asks (the triage is not posted yet), and that ask is correct: post the triage
+ * command therefore is denied (the triage is not posted yet), and that is correct: post the triage
  * as its own command, then merge.
  */
 import { pathToFileURL } from 'node:url';
@@ -132,20 +133,20 @@ export function decide(payload, deps = {}) {
     const bodies = (deps.fetchBodies ?? fetchBodies)(m);
     if (!Array.isArray(bodies)) continue; // fail open for this one
     const triages = bodies.filter((b) => /review triage/i.test(b));
-    const exception =
-      'Merge only if the owner told you to merge this PR without a review (for example a docs-only PR); otherwise run the review first.';
+    const recovery =
+      'Run the fresh-eyes review and post its triage as its own command (not chained with the merge), then merge. If the owner wants this PR merged without a review, they merge it themselves.';
     if (triages.length === 0)
       return {
-        decision: 'ask',
+        decision: 'deny',
         rule: 'review-before-merge',
-        reason: `${label(m)} has no "Review triage" comment. work-the-queue step 4: the fresh-eyes review runs and its triage is posted before the merge (PR #59 was merged without it; the review then found two regressions). ${exception}`,
+        reason: `${label(m)} has no "Review triage" comment. work-the-queue step 4: the fresh-eyes review runs and its triage is posted before the merge (PR #59 was merged without it; the review then found two regressions). ${recovery}`,
       };
     const latest = triages[triages.length - 1];
     if (/(?:→|->)\s*not ready/i.test(latest))
       return {
-        decision: 'ask',
+        decision: 'deny',
         rule: 'review-before-merge',
-        reason: `${label(m)}: its latest review triage says "not ready". Fix the blockers and post the next triage round first. ${exception}`,
+        reason: `${label(m)}: its latest review triage says "not ready". Fix the blockers and post the next triage round first. ${recovery}`,
       };
   }
   return null;
