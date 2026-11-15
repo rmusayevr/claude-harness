@@ -138,7 +138,7 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
     <p class="eyebrow">Blog · the day was 8 November 2026</p>
     <h1>One Day With the Harness</h1>
     <p class="lede">A client questions tracker went from a list of GitHub issues to a finished v1 on a live staging site in one working day. An AI agent did the building and a second one reviewed it. This is what that looked like, including the mistakes, the stops, and the fixes the project forced back into the harness.</p>
-    <p class="byline">By rmusayevr · published 9 November 2026</p>
+    <p class="byline">By rmusayevr · published 9 November 2026 · afterword added 15 November</p>
     <div class="links">
       <a href="https://github.com/rmusayevr/sual-cavab">The project: sual-cavab</a>
       <a href="https://github.com/rmusayevr/claude-harness">The harness: claude-harness</a>
@@ -153,7 +153,7 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
     </div>
     <p class="fine">Counted from GitHub and the project's own logs. The clock includes every wait for the owner. About 3,300 lines of product code and 4,300 lines of tests. Staging is live on Render with invented demo data only.</p>
     <nav class="toc" aria-label="Sections">
-      <a href="#loop">The loop</a><a href="#day">The day</a><a href="#one-issue">One issue</a><a href="#caught">What review caught</a><a href="#stops">Where it stopped</a><a href="#learned">What the harness learned</a><a href="#slow">What was slow</a><a href="#logs">What the logs say</a><a href="#try">Try it</a><a href="#limits">Limits</a>
+      <a href="#loop">The loop</a><a href="#day">The day</a><a href="#one-issue">One issue</a><a href="#caught">What review caught</a><a href="#stops">Where it stopped</a><a href="#learned">What the harness learned</a><a href="#slow">What was slow</a><a href="#logs">What the logs say</a><a href="#week">The rest of the week</a><a href="#try">Try it</a><a href="#limits">Limits</a>
     </nav>
   </header>
 
@@ -310,6 +310,23 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
     </div>
   </section>
 
+  <section id="week">
+    <div class="clock">8 to 15 November</div>
+    <div class="body">
+      <h2>Afterword: the rest of the first week</h2>
+      <p>The project is finished. The logs kept running after the day this page describes, so I audited them once the last pull request was in. Everything below comes from the project's <code>harness-decisions.log</code>, <code>harness-usage.log</code> and <code>.claude/lessons/</code>.</p>
+      <ul class="plain">
+        <li><strong>The guards made 86 decisions, not 10.</strong> 23 asks on <code>rm -rf</code> of something not on the regenerable list, 25 on wiping a data store, 23 before a merge, 9 denials of shell writes to <code>.env</code>, and a handful of others. Nearly all the <code>rm -rf</code> asks were scratch folders the agent had just made. That was prompt fatigue, the thing the guard tests are written to prevent, and it is <a href="https://github.com/rmusayevr/claude-harness/pull/34">fixed in a harness pull request</a> for the cases the guard can prove from the command itself.</li>
+        <li><strong>The 25 data-wipe asks were mostly <code>DROP DATABASE</code> on scratch databases made in earlier commands.</strong> The guard cannot tell those from a real one without guessing at names, so it still asks. I did not count how many of these asks, or of the merge asks, were mistakes; a guess would flatter the guards.</li>
+        <li><strong>A review was skipped once, and a rule did not stop it.</strong> PR #59 merged before its fresh-eyes review ran. The review afterwards found two regressions, fixed in #60 over two rounds. The project then added a hook that asks before merging a pull request with no review triage comment. It asked 23 times, always in <code>auto</code> mode, and the merges that followed went ahead. An <code>ask</code> that nobody answers is not a gate, so the harness version of that hook is a <code>deny</code>.</li>
+        <li><strong>Four log entries were not the project's.</strong> The harness's own hook tests wrote their fixtures (<code>docker volume rm somevol</code>) into the project's decisions log, because the hook fell back to the working directory. I found it by reading the log, and the tests no longer do it.</li>
+        <li><strong>The reviewer did most of the work.</strong> 94 reviewer runs over the week, 25 of them on day one. The skills that fire are the ones the loop names, so the same pattern as day one held. The usage log has only two sessions in it, so "40 of 56 skills never fired" is a weak signal and no skill was deleted on it.</li>
+        <li><strong>Ten lessons were recorded, and three say the rule already existed.</strong> A flag's meaning written from memory (the guidance against inventing flags was already in <code>CLAUDE.md</code>), a new endpoint breaking hand-built test mocks (the scope-change skill already says to check mocks), and slow runs waited on instead of timed (the profiling skill already says to measure). A written rule did not fire at the moment it was needed. That is the finding the harness has no good answer to yet.</li>
+      </ul>
+      <div class="callout warn"><p><strong>The honest part.</strong> One week, one project and one owner, and the same person ran the harness and wrote this up. The audit found the harness doing its job (reviews caught real defects, the <code>.env</code> guard denied nine times) and also costing something (about fifty prompts around scratch work, some of them avoidable). It did not find out whether the harness saved time.</p></div>
+    </div>
+  </section>
+
   <section id="try">
     <div class="clock">your turn</div>
     <div class="body">
@@ -332,7 +349,7 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 2px solid var(--ink); 
     <div class="body">
       <h2>What this does not show</h2>
       <ul class="plain">
-        <li><strong>One project, one day, one owner.</strong> The numbers say what happened, not what will happen to you.</li>
+        <li><strong>One project, one owner.</strong> The day is the main story and the afterword covers the rest of the first week. The numbers say what happened, not what will happen to you.</li>
         <li><strong>No comparison.</strong> I did not measure how long the same app would take without the harness, so there is no "time saved" figure on this page.</li>
         <li><strong>The reviewer's false alarms were not counted.</strong> Its hit rate on real defects looks high, but a clean tally was not kept.</li>
         <li><strong>The harness was changing during the run.</strong> Some of the eleven and a half hours went to fixing the harness, and the fixes are in the harness repository, not in this tutorial.</li>
