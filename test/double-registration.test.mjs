@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,4 +68,25 @@ test('a project copy is not mistaken for the plugin copy: the hook run from the 
     child.stdin.end(JSON.stringify(FORCE_PUSH));
   });
   assert.match(out, /deny/, `the project's own copy must decide (dir ${dir})`);
+});
+
+// macOS keeps temp dirs behind a symlink (/var -> /private/var). A hook compared import.meta.url (resolved)
+// with argv[1] (as typed), so launched through a symlink it never ran main() and said nothing: found by CI.
+test('a hook launched through a symlinked path still runs', async (t) => {
+  const real = mkdtempSync(path.join(tmpdir(), 'hook-real-'));
+  const link = path.join(tmpdir(), `hook-link-${path.basename(real)}`);
+  try {
+    symlinkSync(real, link, 'junction');
+  } catch {
+    return t.skip('cannot create a symlink here');
+  }
+  copyFileSync(path.join(HOOKS, 'guard-risky-ops.mjs'), path.join(real, 'guard-risky-ops.mjs'));
+  const out = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [path.join(link, 'guard-risky-ops.mjs')], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CLAUDE_PROJECT_DIR: project(false) } });
+    let o = '';
+    child.stdout.on('data', (d) => (o += d));
+    child.on('close', () => resolve(o));
+    child.stdin.end(JSON.stringify(FORCE_PUSH));
+  });
+  assert.match(out, /deny/);
 });

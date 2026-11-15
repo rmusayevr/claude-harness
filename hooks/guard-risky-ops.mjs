@@ -1008,7 +1008,7 @@ export function skillHint(decision) {
 // Run main() only when executed directly, so the test file can import decide().
 const invokedDirectly = (() => {
   try {
-    return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+    return process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
   } catch {
     return false;
   }
