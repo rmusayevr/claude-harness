@@ -118,3 +118,21 @@ test('GH_REPO= on the command line chooses the repository', () => {
   assert.equal(merges('GH_REPO=o/r gh pr merge 5')[0].repo, 'o/r');
   assert.equal(merges('GH_REPO=o/r gh pr merge 5 -R x/y')[0].repo, 'x/y');
 });
+
+test('only the status line decides ready or not: a table row quoting an earlier round does not', () => {
+  const r1 = 'Round 1: 1 blockers fixed. Open: 1 blockers, 0 decisions → not ready';
+  const r2 = '| race in X (round 1 → not ready) | blocker | fixed |\n\nRound 2: 1 blockers fixed. Open: 0 blockers, 0 decisions → ready';
+  assert.equal(decide(bash('gh pr merge 5'), bodies(r1, r2)), null);
+});
+
+test('a verdict wrapped in markdown still counts, in both directions', () => {
+  const ready = 'Round 1: 0 blockers fixed. Open: 0 blockers, 0 decisions → **ready**';
+  const notReady = 'Round 2: 0 blockers fixed. Open: 1 blockers, 0 decisions → **not ready**';
+  assert.equal(decide(bash('gh pr merge 5'), bodies(ready)), null);
+  assert.match(decide(bash('gh pr merge 5'), bodies(ready, notReady)).reason, /not ready/);
+});
+
+test('env GH_REPO=o/r gh pr merge is still a merge', () => {
+  assert.equal(merges('env GH_REPO=o/r gh pr merge 5')[0].repo, 'o/r');
+  assert.equal(merges('env gh pr merge 5').length, 1);
+});

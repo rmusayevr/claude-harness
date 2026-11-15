@@ -261,27 +261,47 @@ const SCRATCH_ENV = new Set(['TMPDIR', 'TEMP', 'TMP']);
  * or by anything not recognised here, stays unknown and `rm -rf "$X"` still asks.
  */
 function scratchVars(command) {
-  // Quoted text that is not an assignment's value is data: `git commit -m "use S=/tmp/x"` assigns nothing.
-  // Blanked to spaces of the same length, so a match offset still indexes the original text.
-  const code = command.replace(/(^|[\s;&|(])("[^"]*"|'[^']*')/g, (_, pre, q) => pre + ' '.repeat(q.length));
-  const firstRm = code.search(/\brm\b/);
-  const assigns = [...code.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=((?:"[^"]*"|'[^']*'|\$\([^)]*\)|`[^`]*`|[^\s;&|])*)/g)]
-    .map((m) => ({ name: m[1], raw: command.slice(m.index + m[0].length - m[2].length, m.index + m[0].length), at: m.index }));
-  const vars = new Set();
+  const firstRm = command.search(/\brm\b/);
   const climbs = (v) => /(^|\/)\.\.(\/|$)/.test(norm(v));
+  // Every place a name is assigned, quoted or not. Only a plain top-level `NAME=value` is understood;
+  // anything else that writes the name (`export "D=..."`, `eval 'D=..'`, `S+=..`, `-m"S=/tmp/x"`)
+  // poisons it, because reading shell by regex is how the earlier versions were bypassed.
+  const found = new Map(); // name -> { values: [], poisoned, first }
+  let quote = null;
+  let scanned = 0;
+  const inQuote = (idx) => {
+    for (; scanned < idx; scanned++) {
+      const c = command[scanned];
+      if (quote) {
+        if (c === '\\' && quote === '"') scanned++;
+        else if (c === quote) quote = null;
+      } else if (c === '\\') scanned++;
+      else if (c === '"' || c === "'") quote = c;
+    }
+    return quote !== null;
+  };
+  for (const m of command.matchAll(/(?<![\w$])([A-Za-z_][A-Za-z0-9_]*)(\+?)=/g)) {
+    const e = found.get(m[1]) ?? { values: [], poisoned: false, first: m.index };
+    found.set(m[1], e);
+    const before = m.index === 0 ? '' : command[m.index - 1];
+    const plain = m[2] === '' && (m.index === 0 || /[\s;&|(]/.test(before)) && !inQuote(m.index);
+    if (!plain) { e.poisoned = true; continue; }
+    const vre = /(?:"[^"]*"|'[^']*'|\$\([^)]*\)|`[^`]*`|[^\s;&|])*/y;
+    vre.lastIndex = m.index + m[0].length;
+    e.values.push(vre.exec(command)[0]);
+  }
+  const vars = new Set();
   for (let changed = true; changed;) {
     changed = false;
-    for (const name of new Set(assigns.map((a) => a.name))) {
-      if (vars.has(name)) continue;
-      const mine = assigns.filter((a) => a.name === name);
-      // Only if it is set before the first `rm`, and EVERY assignment to it is scratch: a later
-      // `S=$HOME/src` or an earlier command's value must not ride on one scratch assignment.
-      if (firstRm !== -1 && mine[0].at > firstRm) continue;
-      const scratch = mine.every(({ raw }) => {
+    for (const [name, e] of found) {
+      if (vars.has(name) || e.poisoned || e.values.length === 0) continue;
+      if (firstRm !== -1 && e.first > firstRm) continue; // set after the rm, or in an earlier command
+      const scratch = e.values.every((raw) => {
         const v = unquote(raw);
         if (climbs(v)) return false;
         const mk = /^\$\(\s*mktemp\b[^)]*\)$|^`\s*mktemp\b[^`]*`$/.test(v);
-        const wrapped = /^\$\(\s*cygpath\b[^)]*\)$/.test(v) && [...v.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].some((m) => vars.has(m[1]));
+        const refs = [...v.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].map((r) => r[1]);
+        const wrapped = /^\$\(\s*cygpath\b[^)]*\)$/.test(v) && refs.length > 0 && refs.every((r) => vars.has(r));
         return mk || wrapped || isScratchPath(v) || refersToScratch(v, vars);
       });
       if (scratch) { vars.add(name); changed = true; }
@@ -298,7 +318,7 @@ function scratchVars(command) {
 function refersToScratch(target, vars) {
   const m = /^\$\{?([A-Za-z_]\w*)\}?(\/.*)?$/.exec(norm(target));
   if (!m || /(^|\/)\.\.(\/|$)/.test(m[2] ?? '')) return false;
-  if (m[2] && !/[^/*?[\]"']/.test(m[2])) return false;
+  if (m[2] && !/[^/*?[\]"'.]/.test(m[2])) return false;
   return vars.has(m[1]) || SCRATCH_ENV.has(m[1]);
 }
 

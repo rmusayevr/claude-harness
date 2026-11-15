@@ -85,6 +85,7 @@ export function merges(command) {
   for (const words of segments(command)) {
     let i = 0;
     let envRepo = null;
+    if (words[i] === 'env') i++; // env GH_REPO=o/r gh pr merge ...
     while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) {
       if (words[i].startsWith('GH_REPO=')) envRepo = words[i].slice(8); // GH_REPO=o/r gh pr merge ...
       i++;
@@ -118,7 +119,9 @@ export function merges(command) {
  * are NOT part of that format, so the status line is what counts as a triage. A comment that only
  * mentions the phrase is not one.
  */
-const TRIAGE_LINE = /Round\s+\d+\s*:[^\n]*(?:→|->)\s*(?:not\s+)?ready\b/i;
+const TRIAGE_LINE = /Round\s+\d+\s*:[^\n]*(?:→|->)[\s*_`]*(?:not\s+)?ready\b/i;
+/** The verdict is on the status line only: a table row that quotes an earlier round's "→ not ready" is not it. */
+const verdict = (body) => body.split('\n').filter((l) => TRIAGE_LINE.test(l)).pop() ?? '';
 
 /** Comment and review bodies of a PR, oldest first, or null if they cannot be read. */
 function fetchBodies({ selector, repo }, timeout = 8000) {
@@ -158,7 +161,7 @@ export function decide(payload, deps = {}) {
         reason: `${label(m)} has no review triage comment (a comment ending with the "Round N: ... → ready" line from triage-review). work-the-queue step 4: the fresh-eyes review runs and its triage is posted before the merge (PR #59 was merged without it; the review then found two regressions). ${recovery}`,
       };
     const latest = triages[triages.length - 1];
-    if (/(?:→|->)\s*not\s+ready/i.test(latest))
+    if (/(?:→|->)[\s*_`]*not\s+ready/i.test(verdict(latest)))
       return {
         decision: 'deny',
         rule: 'review-before-merge',

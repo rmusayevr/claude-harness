@@ -582,6 +582,16 @@ describe('rm -rf on scratch space', () => {
       'git commit -m "use S=/tmp/x"; rm -rf "$S"',      // an assignment inside quoted text
       'rm -rf "$TMPDIR/"*',                             // unset TMPDIR makes this /*
       'D=$(mktemp -d); rm -rf "$D/"*',                  // so does a failed mktemp
+      // second review round: ways to write the name that a regex does not read
+      'D=$(mktemp -d); export "D=$HOME/src"; rm -rf "$D"',
+      'D=$(mktemp -d); eval "D=$HOME/src"; rm -rf "$D"',
+      "D=$(mktemp -d); declare 'D=/home/me/src'; rm -rf \"$D\"",
+      'D=$(mktemp -d); export D=$HOME/src; rm -rf "$D"',
+      'S=/tmp/x; S+=/../../home/me; rm -rf "$S"',
+      'git commit -m"use S=/tmp/x"; rm -rf "$S"',
+      'git commit --message="use S=/tmp/x"; rm -rf "$S"',
+      'D=$(mktemp -d); W=$(cygpath -u "$HOME" "$D"); rm -rf $W',
+      'D=$(mktemp -d); rm -rf "$D/".*',
     ]) {
       expect(bash(cmd), 'ask', cmd);
     }
