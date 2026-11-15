@@ -67,5 +67,5 @@ test('a project copy is not mistaken for the plugin copy: the hook run from the 
     child.on('close', () => resolve(o));
     child.stdin.end(JSON.stringify(FORCE_PUSH));
   });
-  assert.match(out, /deny/);
+  assert.match(out, /deny/, `the project's own copy must decide (dir ${dir})`);
 });
