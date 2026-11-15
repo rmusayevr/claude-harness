@@ -24,10 +24,10 @@
  * command therefore is denied (the triage is not posted yet), and that is correct: post the triage
  * as its own command, then merge.
  */
-import { pathToFileURL } from 'node:url';
-import { appendFileSync, existsSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { appendFileSync, existsSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 /** Flags of `gh pr merge` that take a value: the value is not the PR. */
 const VALUE_FLAGS = new Set(['-t', '--subject', '-b', '--body', '-F', '--body-file', '-A', '--author-email', '--match-head-commit', '-R', '--repo']);
@@ -194,7 +194,27 @@ function record(decision, payload) {
 /** The rule exists only where /work-the-queue runs. */
 export const inLoopProject = (dir) => existsSync(join(dir, '.claude', 'harness-loop.json'));
 
+/**
+ * The plugin and a project install both register this hook. Where both exist, only the project's
+ * copy runs, so each decision happens and is logged once. sual-cavab had both from 9 November: every
+ * harness hook ran twice, and its logs counted 86 decisions that were 66, and 94 reviewer runs that
+ * were 67.
+ */
+function standsDown() {
+  try {
+    const self = fileURLToPath(import.meta.url);
+    const mine = join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude', 'hooks', basename(self));
+    if (!existsSync(mine)) return false;
+    const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
+    const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+    return !same(real(mine), real(self));
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
+  if (standsDown()) process.exit(0);
   if (!inLoopProject(process.env.CLAUDE_PROJECT_DIR || process.cwd())) process.exit(0); // not a loop project: no rule
   let decision = null;
   let payload = null;

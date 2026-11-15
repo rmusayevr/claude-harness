@@ -59,6 +59,10 @@ Round <N>: <x> blockers fixed, <y> settled, <z> nits. Open: <a> blockers, <b> de
 `<N>` is the number of earlier status lines on the PR plus one. Tell the user
 the status line and any open decisions.
 
+Use this line exactly, with no other heading or wording instead of it. The merge
+guard looks for it, and 15 of 65 triage comments in the first project used
+another format ("Triage of review round 1") and would be refused.
+
 ## Stop rule
 
 Three rounds without reaching ready means the PR is too big or the plan was

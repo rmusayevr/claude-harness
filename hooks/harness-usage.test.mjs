@@ -108,3 +108,10 @@ describe('process contract', () => {
     }
   });
 });
+
+test('a plugin-qualified subagent type is logged under its plain name', () => {
+  const call = (subagent_type) => usage({ hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type } });
+  assert.deepEqual(call('harness:fresh-eyes-reviewer'), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' });
+  assert.deepEqual(call('fresh-eyes-reviewer'), { skill: 'agent:fresh-eyes-reviewer', via: 'auto' });
+  assert.equal(call('some:other-plugin'), null);
+});
